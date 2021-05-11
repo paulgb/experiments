@@ -4,9 +4,9 @@ use std::error::Error;
 use wgpu::util::StagingBelt;
 use wgpu::{Device, Queue, Surface, SwapChain};
 use wgpu_glyph::{ab_glyph, GlyphBrush, GlyphBrushBuilder, Section, Text};
-use winit::dpi::{PhysicalSize, PhysicalPosition};
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoopWindowTarget, EventLoop};
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use winit::window::Window;
 
 const RENDER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
@@ -62,10 +62,16 @@ impl TextProgram {
             }
 
             Event::WindowEvent {
-                event: WindowEvent::CursorMoved {
-                    position,
-                    ..
-                },
+                event: WindowEvent::ScaleFactorChanged { new_inner_size, .. },
+                ..
+            } => {
+                self.size = *new_inner_size;
+                self.swap_chain = Self::create_swap_chain(self.size, &self.surface, &self.device);
+                self.window.request_redraw();
+            }
+
+            Event::WindowEvent {
+                event: WindowEvent::CursorMoved { position, .. },
                 ..
             } => {
                 self.position = position;
@@ -133,7 +139,7 @@ impl TextProgram {
                         &mut self.staging_belt,
                         &mut encoder,
                         &frame.view,
-                        orthographic_projection(self.size.width, self.size.height)
+                        orthographic_projection(self.size.width, self.size.height),
                     )
                     .expect("Draw queued");
 
@@ -216,16 +222,17 @@ impl TextProgram {
             event_loop: Some(event_loop),
             window,
 
-            position: PhysicalPosition {x: 30., y: 30.},
+            position: PhysicalPosition { x: 30., y: 30. },
         })
     }
 
     pub fn run(mut self) -> Result<(), Box<dyn Error>> {
         self.window.request_redraw();
 
-        self.event_loop.take().unwrap().run(move |event, target, control_flow| {
-            self.handle_event(event, target, control_flow)
-        })
+        self.event_loop
+            .take()
+            .unwrap()
+            .run(move |event, target, control_flow| self.handle_event(event, target, control_flow))
     }
 }
 
