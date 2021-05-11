@@ -4,9 +4,10 @@ use std::error::Error;
 use wgpu::util::StagingBelt;
 use wgpu::{Device, Queue, Surface, SwapChain};
 use wgpu_glyph::{ab_glyph, GlyphBrush, GlyphBrushBuilder, Section, Text};
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalSize, PhysicalPosition};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoopWindowTarget, EventLoop};
+use winit::window::Window;
 
 const RENDER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
 
@@ -20,7 +21,10 @@ struct TextProgram {
     pub local_pool: LocalPool,
     pub local_spawner: LocalSpawner,
     pub queue: Queue,
-    pub event_loop: EventLoop<()>,
+    pub event_loop: Option<EventLoop<()>>,
+    pub window: Window,
+
+    pub position: PhysicalPosition<f64>,
 }
 
 impl TextProgram {
@@ -43,17 +47,19 @@ impl TextProgram {
                 ..
             } => {
                 self.size = new_size;
-                // TODO: this is repeated
-                self.swap_chain = self.device.create_swap_chain(
-                    &self.surface,
-                    &wgpu::SwapChainDescriptor {
-                        usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-                        format: RENDER_FORMAT,
-                        width: self.size.width,
-                        height: self.size.height,
-                        present_mode: wgpu::PresentMode::Mailbox,
-                    },
-                )
+                self.swap_chain = Self::create_swap_chain(self.size, &self.surface, &self.device);
+                self.window.request_redraw();
+            }
+
+            Event::WindowEvent {
+                event: WindowEvent::CursorMoved {
+                    position,
+                    ..
+                },
+                ..
+            } => {
+                self.position = position;
+                self.window.request_redraw();
             }
 
             // Redraw.
@@ -94,7 +100,7 @@ impl TextProgram {
                 }
 
                 self.glyph_brush.queue(Section {
-                    screen_position: (30., 30.),
+                    screen_position: (self.position.x as f32, self.position.y as f32),
                     bounds: (self.size.width as f32, self.size.height as f32),
                     text: vec![Text::new("Hello, world!")
                         .with_color([0.0, 0.0, 0.0, 1.0])
@@ -127,11 +133,24 @@ impl TextProgram {
         }
     }
 
-    pub fn new() -> Self {
+    fn create_swap_chain(size: PhysicalSize<u32>, surface: &Surface, device: &Device) -> SwapChain {
+        device.create_swap_chain(
+            &surface,
+            &wgpu::SwapChainDescriptor {
+                usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+                format: RENDER_FORMAT,
+                width: size.width,
+                height: size.height,
+                present_mode: wgpu::PresentMode::Mailbox,
+            },
+        )
+    }
+
+    pub fn try_new() -> Result<Self, Box<dyn Error>> {
         let event_loop = winit::event_loop::EventLoop::new();
 
         let window = winit::window::WindowBuilder::new()
-            .with_resizable(false)
+            .with_resizable(true)
             .build(&event_loop)
             .unwrap();
 
@@ -160,22 +179,13 @@ impl TextProgram {
 
         let size = window.inner_size();
 
-        let swap_chain = device.create_swap_chain(
-            &surface,
-            &wgpu::SwapChainDescriptor {
-                usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-                format: RENDER_FORMAT,
-                width: size.width,
-                height: size.height,
-                present_mode: wgpu::PresentMode::Mailbox,
-            },
-        );
+        let swap_chain = Self::create_swap_chain(size, &surface, &device);
 
         let font = ab_glyph::FontArc::try_from_slice(include_bytes!("Inconsolata-Regular.ttf"))?;
 
         let glyph_brush = GlyphBrushBuilder::using_font(font).build(&device, RENDER_FORMAT);
 
-        TextProgram {
+        Ok(TextProgram {
             size,
             swap_chain,
             glyph_brush,
@@ -185,15 +195,18 @@ impl TextProgram {
             local_pool,
             local_spawner,
             queue,
-            event_loop,
-        }
+            event_loop: Some(event_loop),
+            window,
+
+            position: PhysicalPosition {x: 30., y: 30.},
+        })
     }
 
-    pub fn run(&self) -> Result<(), Box<dyn Error>> {
+    pub fn run(mut self) -> Result<(), Box<dyn Error>> {
         self.window.request_redraw();
 
-        self.event_loop.run(move |event, target, control_flow| {
-            text_program.handle_event(event, target, control_flow)
+        self.event_loop.take().unwrap().run(move |event, target, control_flow| {
+            self.handle_event(event, target, control_flow)
         })
     }
 }
@@ -201,6 +214,6 @@ impl TextProgram {
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
-    let text_program = TextProgram::new();
+    let text_program = TextProgram::try_new()?;
     text_program.run()
 }
