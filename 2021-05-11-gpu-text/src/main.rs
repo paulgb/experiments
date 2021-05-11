@@ -27,6 +27,16 @@ struct TextProgram {
     pub position: PhysicalPosition<f64>,
 }
 
+pub fn orthographic_projection(width: u32, height: u32) -> [f32; 16] {
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    [
+        2.0 / width as f32, 0.0, 0.0, 0.0,
+        0.0, -2.0 / height as f32, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        -1.0, 1.0, 0.0, 1.0,
+    ]
+}
+
 impl TextProgram {
     pub fn handle_event(
         &mut self,
@@ -108,14 +118,22 @@ impl TextProgram {
                     ..Section::default()
                 });
 
+                self.glyph_brush.queue(Section {
+                    screen_position: (self.position.x as f32, self.position.y as f32 + 50.),
+                    bounds: (self.size.width as f32, self.size.height as f32),
+                    text: vec![Text::new("Hello, world!")
+                        .with_color([1.0, 0.0, 0.0, 1.0])
+                        .with_scale(40.0)],
+                    ..Section::default()
+                });
+
                 self.glyph_brush
-                    .draw_queued(
+                    .draw_queued_with_transform(
                         &self.device,
                         &mut self.staging_belt,
                         &mut encoder,
                         &frame.view,
-                        self.size.width,
-                        self.size.height,
+                        orthographic_projection(self.size.width, self.size.height)
                     )
                     .expect("Draw queued");
 
@@ -141,7 +159,7 @@ impl TextProgram {
                 format: RENDER_FORMAT,
                 width: size.width,
                 height: size.height,
-                present_mode: wgpu::PresentMode::Mailbox,
+                present_mode: wgpu::PresentMode::Immediate,
             },
         )
     }
