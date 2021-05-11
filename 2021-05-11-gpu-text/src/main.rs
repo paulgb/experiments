@@ -6,7 +6,7 @@ use wgpu::{Device, Queue, Surface, SwapChain};
 use wgpu_glyph::{ab_glyph, GlyphBrush, GlyphBrushBuilder, Section, Text};
 use winit::dpi::PhysicalSize;
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoopWindowTarget};
+use winit::event_loop::{ControlFlow, EventLoopWindowTarget, EventLoop};
 
 const RENDER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
 
@@ -20,6 +20,7 @@ struct TextProgram {
     pub local_pool: LocalPool,
     pub local_spawner: LocalSpawner,
     pub queue: Queue,
+    pub event_loop: EventLoop<()>,
 }
 
 impl TextProgram {
@@ -125,73 +126,81 @@ impl TextProgram {
             _ => *control_flow = ControlFlow::Wait,
         }
     }
+
+    pub fn new() -> Self {
+        let event_loop = winit::event_loop::EventLoop::new();
+
+        let window = winit::window::WindowBuilder::new()
+            .with_resizable(false)
+            .build(&event_loop)
+            .unwrap();
+
+        let instance = wgpu::Instance::new(wgpu::BackendBit::all());
+        let surface = unsafe { instance.create_surface(&window) };
+
+        // Initialize GPU
+        let (device, queue) = futures::executor::block_on(async {
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: Some(&surface),
+                })
+                .await
+                .expect("Request adapter");
+
+            adapter
+                .request_device(&wgpu::DeviceDescriptor::default(), None)
+                .await
+                .expect("Request device")
+        });
+
+        let staging_belt = wgpu::util::StagingBelt::new(1024);
+        let local_pool = futures::executor::LocalPool::new();
+        let local_spawner = local_pool.spawner();
+
+        let size = window.inner_size();
+
+        let swap_chain = device.create_swap_chain(
+            &surface,
+            &wgpu::SwapChainDescriptor {
+                usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+                format: RENDER_FORMAT,
+                width: size.width,
+                height: size.height,
+                present_mode: wgpu::PresentMode::Mailbox,
+            },
+        );
+
+        let font = ab_glyph::FontArc::try_from_slice(include_bytes!("Inconsolata-Regular.ttf"))?;
+
+        let glyph_brush = GlyphBrushBuilder::using_font(font).build(&device, RENDER_FORMAT);
+
+        TextProgram {
+            size,
+            swap_chain,
+            glyph_brush,
+            surface,
+            device,
+            staging_belt,
+            local_pool,
+            local_spawner,
+            queue,
+            event_loop,
+        }
+    }
+
+    pub fn run(&self) -> Result<(), Box<dyn Error>> {
+        self.window.request_redraw();
+
+        self.event_loop.run(move |event, target, control_flow| {
+            text_program.handle_event(event, target, control_flow)
+        })
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
-    let event_loop = winit::event_loop::EventLoop::new();
-
-    let window = winit::window::WindowBuilder::new()
-        .with_resizable(false)
-        .build(&event_loop)
-        .unwrap();
-
-    let instance = wgpu::Instance::new(wgpu::BackendBit::all());
-    let surface = unsafe { instance.create_surface(&window) };
-
-    // Initialize GPU
-    let (device, queue) = futures::executor::block_on(async {
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-            })
-            .await
-            .expect("Request adapter");
-
-        adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
-            .await
-            .expect("Request device")
-    });
-
-    let staging_belt = wgpu::util::StagingBelt::new(1024);
-    let local_pool = futures::executor::LocalPool::new();
-    let local_spawner = local_pool.spawner();
-
-    let size = window.inner_size();
-
-    let swap_chain = device.create_swap_chain(
-        &surface,
-        &wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-            format: RENDER_FORMAT,
-            width: size.width,
-            height: size.height,
-            present_mode: wgpu::PresentMode::Mailbox,
-        },
-    );
-
-    let font = ab_glyph::FontArc::try_from_slice(include_bytes!("Inconsolata-Regular.ttf"))?;
-
-    let glyph_brush = GlyphBrushBuilder::using_font(font).build(&device, RENDER_FORMAT);
-
-    let mut text_program = TextProgram {
-        size,
-        swap_chain,
-        glyph_brush,
-        surface,
-        device,
-        staging_belt,
-        local_pool,
-        local_spawner,
-        queue,
-    };
-
-    window.request_redraw();
-
-    event_loop.run(move |event, target, control_flow| {
-        text_program.handle_event(event, target, control_flow)
-    })
+    let text_program = TextProgram::new();
+    text_program.run()
 }
