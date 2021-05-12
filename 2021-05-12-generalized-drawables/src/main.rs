@@ -1,6 +1,5 @@
 use std::iter;
 
-use wgpu::{Device, RenderPass, SwapChainDescriptor};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -8,18 +7,10 @@ use winit::{
 };
 
 use circle::{Circle, CirclesLayer};
+use layer::{Drawable, Layer};
 
 mod circle;
-
-trait Layer {
-    type D: Drawable;
-
-    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Self::D;
-}
-
-trait Drawable {
-    fn draw<'a>(&'a self, render_pass: &mut RenderPass<'a>);
-}
+mod layer;
 
 struct State {
     surface: wgpu::Surface,

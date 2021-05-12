@@ -1,9 +1,9 @@
-use wgpu::util::DeviceExt;
 use wgpu::{
     BlendComponent, BlendState, Buffer, Device, RenderPass, RenderPipeline, SwapChainDescriptor,
 };
+use wgpu::util::DeviceExt;
 
-use crate::{Drawable, Layer};
+use crate::layer::{Drawable, Layer};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
