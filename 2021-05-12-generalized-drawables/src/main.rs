@@ -8,7 +8,15 @@ use winit::{
 use wgpu::{BlendState, BlendComponent, Device, RenderPipeline, Buffer, RenderPass, SwapChainDescriptor};
 use wgpu::util::DeviceExt;
 
+trait Layer {
+    type D: Drawable;
 
+    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Self::D;
+}
+
+trait Drawable {
+    fn draw<'a>(&'a self, render_pass: &mut RenderPass<'a>);
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -31,13 +39,36 @@ const CIRCLES: &[Circle] = &[
     },
 ];
 
-struct Drawable {
-    render_pipeline: RenderPipeline,
-    instance_buffer: Buffer,
+struct CirclesLayer {
+    data: Vec<Circle>,
 }
 
-impl Drawable {
-    pub fn new(device: &Device, sc_desc: &SwapChainDescriptor) -> Self {
+impl CirclesLayer {
+    pub fn new(data: Vec<Circle>) -> Self {
+        CirclesLayer {
+            data
+        }
+    }
+}
+
+struct CirclesLayerDrawable {
+    render_pipeline: RenderPipeline,
+    instance_buffer: Buffer,
+    num_circles: u32,
+}
+
+impl Drawable for CirclesLayerDrawable {
+    fn draw<'a>(&'a self, render_pass: &mut RenderPass<'a>) {
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        render_pass.draw(0..6, 0..self.num_circles);
+    }
+}
+
+impl Layer for CirclesLayer {
+    type D = CirclesLayerDrawable;
+
+    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Self::D {
         let instance_buffer_desc = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Circle>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Instance,
@@ -63,7 +94,7 @@ impl Drawable {
         let instance_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Instance buffer"),
-                contents: bytemuck::cast_slice(CIRCLES),
+                contents: bytemuck::cast_slice(&self.data),
                 usage: wgpu::BufferUsage::VERTEX
             }
         );
@@ -117,17 +148,14 @@ impl Drawable {
             },
         });
 
-        Drawable {
+        CirclesLayerDrawable {
             render_pipeline,
             instance_buffer,
+            num_circles: self.data.len() as u32,
         }
     }
 
-    pub fn draw<'a>(&'a self, render_pass: &mut RenderPass<'a>) {
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-        render_pass.draw(0..6, 0..CIRCLES.len() as u32);
-    }
+
 }
 
 struct State {
@@ -138,7 +166,7 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
 
-    drawable: Drawable,
+    drawables: Vec<Box<dyn Drawable>>,
 }
 
 impl State {
@@ -176,7 +204,11 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let drawable = Drawable::new(&device, &sc_desc);
+        let mut drawables: Vec<Box<dyn Drawable>> = Vec::new();
+
+        drawables.push(
+            Box::new(CirclesLayer::new(Vec::from(CIRCLES)).init_drawable(&device, &sc_desc))
+        );
 
         Self {
             surface,
@@ -185,7 +217,7 @@ impl State {
             size,
             sc_desc,
             swap_chain,
-            drawable
+            drawables
         }
     }
 
@@ -231,7 +263,9 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            self.drawable.draw(&mut render_pass);
+            for drawable in &self.drawables {
+                drawable.draw(&mut render_pass);
+            }
         }
 
         self.queue.submit(iter::once(encoder.finish()));
