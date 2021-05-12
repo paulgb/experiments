@@ -1,12 +1,14 @@
 use std::iter;
 
+use wgpu::util::DeviceExt;
+use wgpu::{
+    BlendComponent, BlendState, Buffer, Device, RenderPass, RenderPipeline, SwapChainDescriptor,
+};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-use wgpu::{BlendState, BlendComponent, Device, RenderPipeline, Buffer, RenderPass, SwapChainDescriptor};
-use wgpu::util::DeviceExt;
 
 trait Layer {
     type D: Drawable;
@@ -26,28 +28,13 @@ struct Circle {
     radius: f32,
 }
 
-const CIRCLES: &[Circle] = &[
-    Circle {
-        position: [0., 0.],
-        radius: 0.2,
-        color: [0.6, 0.6, 0., 1.],
-    },
-    Circle {
-        position: [0.4, 0.4],
-        radius: 0.05,
-        color: [0.7, 0., 0.4, 1.],
-    },
-];
-
 struct CirclesLayer {
     data: Vec<Circle>,
 }
 
 impl CirclesLayer {
     pub fn new(data: Vec<Circle>) -> Self {
-        CirclesLayer {
-            data
-        }
+        CirclesLayer { data }
     }
 }
 
@@ -76,28 +63,26 @@ impl Layer for CirclesLayer {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x2
+                    format: wgpu::VertexFormat::Float32x2,
                 },
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x4
+                    format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32,
-                }
-            ]
+                },
+            ],
         };
 
-        let instance_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance buffer"),
-                contents: bytemuck::cast_slice(&self.data),
-                usage: wgpu::BufferUsage::VERTEX
-            }
-        );
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance buffer"),
+            contents: bytemuck::cast_slice(&self.data),
+            usage: wgpu::BufferUsage::VERTEX,
+        });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -125,8 +110,8 @@ impl Layer for CirclesLayer {
                     write_mask: wgpu::ColorWrite::ALL,
                     blend: Some(BlendState {
                         color: BlendComponent::OVER,
-                        alpha: BlendComponent::OVER
-                    })
+                        alpha: BlendComponent::REPLACE,
+                    }),
                 }],
             }),
             primitive: wgpu::PrimitiveState {
@@ -138,7 +123,7 @@ impl Layer for CirclesLayer {
                 // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 clamp_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false
+                conservative: false,
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState {
@@ -154,8 +139,6 @@ impl Layer for CirclesLayer {
             num_circles: self.data.len() as u32,
         }
     }
-
-
 }
 
 struct State {
@@ -206,9 +189,35 @@ impl State {
 
         let mut drawables: Vec<Box<dyn Drawable>> = Vec::new();
 
-        drawables.push(
-            Box::new(CirclesLayer::new(Vec::from(CIRCLES)).init_drawable(&device, &sc_desc))
-        );
+        drawables.push(Box::new(
+            CirclesLayer::new(vec![
+                Circle {
+                    position: [0.45, 0.45],
+                    radius: 0.1,
+                    color: [0.5, 1.0, 0.5, 1.],
+                },
+                Circle {
+                    position: [0., 0.],
+                    radius: 0.2,
+                    color: [0.6, 0.6, 0., 1.],
+                },
+                Circle {
+                    position: [0.4, 0.4],
+                    radius: 0.05,
+                    color: [0.7, 0., 0.4, 1.],
+                },
+            ])
+            .init_drawable(&device, &sc_desc),
+        ));
+
+        drawables.push(Box::new(
+            CirclesLayer::new(vec![Circle {
+                position: [-0.3, -0.4],
+                radius: 0.5,
+                color: [0.3, 0.6, 0.9, 1.],
+            }])
+            .init_drawable(&device, &sc_desc),
+        ));
 
         Self {
             surface,
@@ -217,7 +226,7 @@ impl State {
             size,
             sc_desc,
             swap_chain,
-            drawables
+            drawables,
         }
     }
 

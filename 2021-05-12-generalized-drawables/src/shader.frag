@@ -11,5 +11,9 @@ void main() {
 
     float alpha = 1.0 - smoothstep(1.0 - delta*2., 1.0, r);
 
-    f_color = vec4(v_color.rgb, v_color.a * alpha);
+    if (alpha < 0.01) {
+        discard;
+    }
+
+    f_color = vec4(v_color.rgb * alpha, v_color.a * alpha);
 }
