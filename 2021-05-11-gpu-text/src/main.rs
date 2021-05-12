@@ -3,6 +3,7 @@ use futures::task::SpawnExt;
 use std::error::Error;
 use wgpu::util::StagingBelt;
 use wgpu::{Device, Queue, Surface, SwapChain};
+use wgpu_glyph::ab_glyph::PxScale;
 use wgpu_glyph::{ab_glyph, GlyphBrush, GlyphBrushBuilder, Section, Text};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{Event, WindowEvent};
@@ -78,6 +79,12 @@ impl TextProgram {
                 self.window.request_redraw();
             }
 
+            Event::WindowEvent {
+                event: WindowEvent::MouseWheel {
+                    delta, ..
+                }, ..
+            } => println!("x {:?}", &delta),
+
             // Redraw.
             Event::RedrawRequested { .. } => {
                 // Get a command encoder for the current frame
@@ -129,7 +136,7 @@ impl TextProgram {
                     bounds: (self.size.width as f32, self.size.height as f32),
                     text: vec![Text::new("Hello, world!")
                         .with_color([1.0, 0.0, 0.0, 1.0])
-                        .with_scale(40.0)],
+                        .with_scale(PxScale::from(70.))],
                     ..Section::default()
                 });
 
