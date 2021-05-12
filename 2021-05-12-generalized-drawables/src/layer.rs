@@ -1,9 +1,7 @@
 use wgpu::{Device, RenderPass, SwapChainDescriptor};
 
 pub trait Layer {
-    type D: Drawable;
-
-    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Self::D;
+    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Box<dyn Drawable>;
 }
 
 pub trait Drawable {

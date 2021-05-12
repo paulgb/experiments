@@ -6,9 +6,9 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+use crate::rectangle::{Rectangle, RectanglesLayer};
 use circle::{Circle, CirclesLayer};
 use layer::{Drawable, Layer};
-use crate::rectangle::{RectanglesLayer, Rectangle};
 
 mod circle;
 mod layer;
@@ -60,50 +60,47 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let drawables: Vec<Box<dyn Drawable>> = vec![
-            Box::new(
-                CirclesLayer::new(vec![
-                    Circle {
-                        position: [0.45, 0.45],
-                        radius: 0.1,
-                        color: [0.5, 1.0, 0.5, 1.],
-                    },
-                    Circle {
-                        position: [0., 0.],
-                        radius: 0.2,
-                        color: [0.6, 0.6, 0., 1.],
-                    },
-                    Circle {
-                        position: [0.4, 0.4],
-                        radius: 0.05,
-                        color: [0.7, 0., 0.4, 1.],
-                    },
-                ])
-                .init_drawable(&device, &sc_desc),
-            ),
-            Box::new(
-                CirclesLayer::new(vec![Circle {
-                    position: [-0.3, -0.4],
-                    radius: 0.5,
-                    color: [0.3, 0.6, 0.9, 1.],
-                }])
-                .init_drawable(&device, &sc_desc),
-            ),
-            Box::new(
-                RectanglesLayer::new(vec![
-                    Rectangle {
-                        upper_left: [0., 0.],
-                        bottom_right: [0.5, -0.5],
-                        color: [0.3, 0.6, 0.4, 1.],
-                    },
-                    Rectangle {
-                        upper_left: [-0.4, 0.3],
-                        bottom_right: [-0.2, 0.1],
-                        color: [0.7, 0., 0.4, 1.],
-                    },
-                ]).init_drawable(&device, &sc_desc)
-            )
+        let layers: Vec<Box<dyn Layer>> = vec![
+            Box::new(CirclesLayer::new(vec![
+                Circle {
+                    position: [0.45, 0.45],
+                    radius: 0.1,
+                    color: [0.5, 1.0, 0.5, 1.],
+                },
+                Circle {
+                    position: [0., 0.],
+                    radius: 0.2,
+                    color: [0.6, 0.6, 0., 1.],
+                },
+                Circle {
+                    position: [0.4, 0.4],
+                    radius: 0.05,
+                    color: [0.7, 0., 0.4, 1.],
+                },
+            ])),
+            Box::new(CirclesLayer::new(vec![Circle {
+                position: [-0.3, -0.4],
+                radius: 0.5,
+                color: [0.3, 0.6, 0.9, 1.],
+            }])),
+            Box::new(RectanglesLayer::new(vec![
+                Rectangle {
+                    upper_left: [0., 0.],
+                    bottom_right: [0.5, -0.5],
+                    color: [0.3, 0.6, 0.4, 1.],
+                },
+                Rectangle {
+                    upper_left: [-0.4, 0.3],
+                    bottom_right: [-0.2, 0.1],
+                    color: [0.7, 0., 0.4, 1.],
+                },
+            ])),
         ];
+
+        let drawables = layers
+            .into_iter()
+            .map(|d| d.init_drawable(&device, &sc_desc))
+            .collect();
 
         Self {
             surface,

@@ -1,6 +1,8 @@
-use wgpu::{RenderPipeline, Buffer, RenderPass, Device, SwapChainDescriptor, BlendState, BlendComponent};
 use crate::layer::{Drawable, Layer};
 use wgpu::util::DeviceExt;
+use wgpu::{
+    BlendComponent, BlendState, Buffer, Device, RenderPass, RenderPipeline, SwapChainDescriptor,
+};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -9,7 +11,6 @@ pub struct Rectangle {
     pub bottom_right: [f32; 2],
     pub color: [f32; 4],
 }
-
 
 pub struct RectanglesLayer {
     data: Vec<Rectangle>,
@@ -36,9 +37,7 @@ impl Drawable for RectanglesLayerDrawable {
 }
 
 impl Layer for RectanglesLayer {
-    type D = RectanglesLayerDrawable;
-
-    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Self::D {
+    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Box<dyn Drawable> {
         let instance_buffer_desc = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Rectangle>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Instance,
@@ -116,10 +115,10 @@ impl Layer for RectanglesLayer {
             },
         });
 
-        RectanglesLayerDrawable {
+        Box::new(RectanglesLayerDrawable {
             render_pipeline,
             instance_buffer,
             num_rects: self.data.len() as u32,
-        }
+        })
     }
 }

@@ -1,7 +1,7 @@
+use wgpu::util::DeviceExt;
 use wgpu::{
     BlendComponent, BlendState, Buffer, Device, RenderPass, RenderPipeline, SwapChainDescriptor,
 };
-use wgpu::util::DeviceExt;
 
 use crate::layer::{Drawable, Layer};
 
@@ -38,9 +38,7 @@ impl Drawable for CirclesLayerDrawable {
 }
 
 impl Layer for CirclesLayer {
-    type D = CirclesLayerDrawable;
-
-    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Self::D {
+    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor) -> Box<dyn Drawable> {
         let instance_buffer_desc = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Circle>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Instance,
@@ -118,10 +116,10 @@ impl Layer for CirclesLayer {
             },
         });
 
-        CirclesLayerDrawable {
+        Box::new(CirclesLayerDrawable {
             render_pipeline,
             instance_buffer,
             num_circles: self.data.len() as u32,
-        }
+        })
     }
 }
