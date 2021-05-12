@@ -8,9 +8,11 @@ use winit::{
 
 use circle::{Circle, CirclesLayer};
 use layer::{Drawable, Layer};
+use crate::rectangle::{RectanglesLayer, Rectangle};
 
 mod circle;
 mod layer;
+mod rectangle;
 
 struct State {
     surface: wgpu::Surface,
@@ -87,6 +89,20 @@ impl State {
                 }])
                 .init_drawable(&device, &sc_desc),
             ),
+            Box::new(
+                RectanglesLayer::new(vec![
+                    Rectangle {
+                        upper_left: [0., 0.],
+                        bottom_right: [0.5, -0.5],
+                        color: [0.3, 0.6, 0.4, 1.],
+                    },
+                    Rectangle {
+                        upper_left: [-0.4, 0.3],
+                        bottom_right: [-0.2, 0.1],
+                        color: [0.7, 0., 0.4, 1.],
+                    },
+                ]).init_drawable(&device, &sc_desc)
+            )
         ];
 
         Self {
