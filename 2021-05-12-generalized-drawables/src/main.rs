@@ -9,10 +9,12 @@ use winit::{
 use crate::rectangle::{Rectangle, RectanglesLayer};
 use circle::{Circle, CirclesLayer};
 use layer::{Drawable, Layer};
+use crate::line::{LinesLayer, Line};
 
 mod circle;
 mod layer;
 mod rectangle;
+mod line;
 
 struct State {
     surface: wgpu::Surface,
@@ -95,6 +97,16 @@ impl State {
                     color: [0.7, 0., 0.4, 1.],
                 },
             ])),
+            Box::new(LinesLayer::new(
+                vec![
+                    Line {
+                        start: [-0.5, -0.5],
+                        end: [0.5, 0.5],
+                        width: 0.002,
+                        color: [0.3, 0.1, 0.2, 1.0],
+                    }
+                ]
+            ))
         ];
 
         let drawables = layers
