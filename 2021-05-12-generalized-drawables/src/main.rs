@@ -6,15 +6,16 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+use crate::line::{Line, LinesLayer};
 use crate::rectangle::{Rectangle, RectanglesLayer};
 use circle::{Circle, CirclesLayer};
 use layer::{Drawable, Layer};
-use crate::line::{LinesLayer, Line};
+use winit::dpi::PhysicalSize;
 
 mod circle;
 mod layer;
-mod rectangle;
 mod line;
+mod rectangle;
 
 struct State {
     surface: wgpu::Surface,
@@ -97,16 +98,12 @@ impl State {
                     color: [0.7, 0., 0.4, 1.],
                 },
             ])),
-            Box::new(LinesLayer::new(
-                vec![
-                    Line {
-                        start: [-0.5, -0.5],
-                        end: [0.5, 0.5],
-                        width: 0.002,
-                        color: [0.3, 0.1, 0.2, 1.0],
-                    }
-                ]
-            ))
+            Box::new(LinesLayer::new(vec![Line {
+                start: [-0.5, -0.5],
+                end: [0.5, 0.5],
+                width: 0.01,
+                color: [0.3, 0.1, 0.2, 1.0],
+            }])),
         ];
 
         let drawables = layers
@@ -181,7 +178,14 @@ impl State {
 fn main() {
     env_logger::init();
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_title("Shape Drawing Demo")
+        .with_inner_size(PhysicalSize {
+            width: 600,
+            height: 600,
+        })
+        .build(&event_loop)
+        .unwrap();
 
     use futures::executor::block_on;
 
