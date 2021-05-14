@@ -7,14 +7,12 @@ layout(location=3) in float a_width;
 
 layout(location=0) out vec4 v_color;
 
-void main() {
-    mat4 transform = mat4(
-        1., 0., 0., 0.,
-        0., 1., 0., 0.,
-        0., 0., 1., 0.,
-        0., 0.2, 0., 1.
-    );
+layout(set=0, binding=0)
+uniform Uniforms {
+    mat4 u_transform;
+};
 
+void main() {
     vec2 line = normalize(a_end - a_start);
     vec2 perp = vec2(line.y, -line.x);
 
@@ -39,7 +37,7 @@ void main() {
         gl_Position = vec4(c4, 0., 1.);
     }
 
-    //gl_Position = transform * gl_Position;
+    gl_Position = u_transform * gl_Position;
 
     v_color = a_color;
 }
