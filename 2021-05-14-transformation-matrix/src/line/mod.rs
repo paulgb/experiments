@@ -1,6 +1,9 @@
 use crate::layer::{Drawable, Layer};
 use wgpu::util::DeviceExt;
-use wgpu::{BlendComponent, BlendState, Buffer, Device, RenderPass, RenderPipeline, SwapChainDescriptor, BindGroupLayout, BindGroup};
+use wgpu::{
+    BindGroup, BindGroupLayout, BlendComponent, BlendState, Buffer, Device, RenderPass,
+    RenderPipeline, SwapChainDescriptor,
+};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
@@ -37,7 +40,12 @@ impl Drawable for LinesLayerDrawable {
 }
 
 impl Layer for LinesLayer {
-    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor, transform_layout: &BindGroupLayout) -> Box<dyn Drawable> {
+    fn init_drawable(
+        &self,
+        device: &Device,
+        sc_desc: &SwapChainDescriptor,
+        transform_layout: &BindGroupLayout,
+    ) -> Box<dyn Drawable> {
         let instance_buffer_desc = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Line>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Instance,
@@ -74,9 +82,7 @@ impl Layer for LinesLayer {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    transform_layout
-                ],
+                bind_group_layouts: &[transform_layout],
                 push_constant_ranges: &[],
             });
 

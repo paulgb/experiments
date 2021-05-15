@@ -10,30 +10,29 @@ use crate::line::{Line, LinesLayer};
 use crate::rectangle::{Rectangle, RectanglesLayer};
 use circle::{Circle, CirclesLayer};
 use layer::{Drawable, Layer};
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsage, ShaderStage,
+};
 use winit::dpi::PhysicalSize;
-use wgpu::{Buffer, BufferUsage, BindGroupDescriptor, BindGroupLayoutDescriptor, BindGroupLayoutEntry, ShaderStage, BindingType, BufferBindingType, BindGroupEntry, BindGroupLayout, BindGroup};
-use wgpu::util::{DeviceExt, BufferInitDescriptor};
 
 mod circle;
 mod layer;
 mod line;
 mod rectangle;
 
-#[rustfmt::skip]
-const IDENTITY_MATRIX: [f32; 16] = [
-    1., 0., 0., 0.,
-    0., 1., 0., 0.,
-    0., 0., 1., 0.,
-    0., 0., 0., 1.,
-];
+type Mat4 = [f32; 16];
 
-#[rustfmt::skip]
-const TRANSFORMATION_MATRIX: [f32; 16] = [
-    1., 0., 0., 0.,
-    0., 1., 0., 0.,
-    0., 0., 1., 0.,
-    0., 0.3, 0., 1.,
-];
+pub fn transformation_matrix(width: u32, height: u32) -> Mat4 {
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    [
+        2. / width as f32,                  0., 0., 0.,
+                       0., -2. / height as f32, 0., 0.,
+                       0.,                  0., 1., 0.,
+                       -1.,                 1., 0., 1.,
+    ]
+}
 
 struct State {
     surface: wgpu::Surface,
@@ -42,8 +41,8 @@ struct State {
     sc_desc: wgpu::SwapChainDescriptor,
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
-    transform: Buffer,
-    transform_layout: BindGroupLayout,
+    transform: Mat4,
+    transform_buffer: Buffer,
     transform_bind_group: BindGroup,
 
     drawables: Vec<Box<dyn Drawable>>,
@@ -87,84 +86,76 @@ impl State {
         let layers: Vec<Box<dyn Layer>> = vec![
             Box::new(CirclesLayer::new(vec![
                 Circle {
-                    position: [0.45, 0.45],
-                    radius: 0.1,
-                    color: [0.5, 1.0, 0.5, 1.],
+                    position: [20., 20.,],
+                    radius: 15.,
+                    color: [0.1, 1.0, 0.5, 1.],
                 },
                 Circle {
-                    position: [0., 0.],
-                    radius: 0.2,
+                    position: [300., 300.],
+                    radius: 50.,
                     color: [0.6, 0.6, 0., 1.],
                 },
                 Circle {
-                    position: [0.4, 0.4],
-                    radius: 0.05,
+                    position: [350., 350.],
+                    radius: 70.,
                     color: [0.7, 0., 0.4, 1.],
                 },
             ])),
             Box::new(CirclesLayer::new(vec![Circle {
-                position: [-0.3, -0.4],
-                radius: 0.5,
+                position: [500., 300.,],
+                radius: 40.,
                 color: [0.3, 0.6, 0.9, 1.],
             }])),
             Box::new(RectanglesLayer::new(vec![
                 Rectangle {
-                    upper_left: [0., 0.],
-                    bottom_right: [0.5, -0.5],
+                    upper_left: [400., 400.],
+                    bottom_right: [450., 500.],
                     color: [0.3, 0.6, 0.4, 1.],
                 },
                 Rectangle {
-                    upper_left: [-0.4, 0.3],
-                    bottom_right: [-0.2, 0.1],
+                    upper_left: [10., 250.],
+                    bottom_right: [50., 300.],
                     color: [0.7, 0., 0.4, 1.],
                 },
             ])),
             Box::new(LinesLayer::new(vec![Line {
-                start: [-0.5, -0.5],
-                end: [0.5, 0.5],
-                width: 0.01,
-                color: [0.3, 0.1, 0.2, 1.0],
+                start: [450., 450.],
+                end: [200., 100.],
+                width: 3.,
+                color: [0.0, 0.0, 0.0, 1.0],
             }])),
         ];
 
-        let transform = device.create_buffer_init(
-            &BufferInitDescriptor {
-                label: Some("Transformation buffer"),
-                contents: bytemuck::cast_slice(&[IDENTITY_MATRIX]),
-                usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST
-            }
-        );
-        
-        let transform_layout = device.create_bind_group_layout(
-            &BindGroupLayoutDescriptor {
-                label: Some("Transformation bind group layout"),
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStage::VERTEX,
-                        ty: BindingType::Buffer {
-                            ty: BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None
-                        },
-                        count: None
-                    }
-                ]
-            }
-        );
-        
-        let transform_bind_group = device.create_bind_group(
-            &BindGroupDescriptor {
-                label: Some("Transformation bind group"),
-                layout: &transform_layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: transform.as_entire_binding()
-                    }
-                ]
-            }
-        );
+        let transform = transformation_matrix(size.width, size.height);
+
+        let transform_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Transformation buffer"),
+            contents: bytemuck::cast_slice(&[transform]),
+            usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST,
+        });
+
+        let transform_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Transformation bind group layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStage::VERTEX,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let transform_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Transformation bind group"),
+            layout: &transform_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: transform_buffer.as_entire_binding(),
+            }],
+        });
 
         let drawables = layers
             .into_iter()
@@ -180,7 +171,7 @@ impl State {
             swap_chain,
             drawables,
             transform,
-            transform_layout,
+            transform_buffer,
             transform_bind_group,
         }
     }
@@ -189,6 +180,9 @@ impl State {
         self.size = new_size;
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
+
+        self.transform = transformation_matrix(new_size.width, new_size.height);
+
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
 
@@ -227,7 +221,11 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            self.queue.write_buffer(&self.transform, 0, &bytemuck::cast_slice(&TRANSFORMATION_MATRIX));
+            self.queue.write_buffer(
+                &self.transform_buffer,
+                0,
+                &bytemuck::cast_slice(&self.transform),
+            );
 
             for drawable in &self.drawables {
                 drawable.draw(&mut render_pass, &self.transform_bind_group);

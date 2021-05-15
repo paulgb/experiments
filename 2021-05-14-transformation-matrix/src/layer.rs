@@ -1,7 +1,12 @@
-use wgpu::{Device, RenderPass, SwapChainDescriptor, BindGroupLayout, BindGroup};
+use wgpu::{BindGroup, BindGroupLayout, Device, RenderPass, SwapChainDescriptor};
 
 pub trait Layer {
-    fn init_drawable(&self, device: &Device, sc_desc: &SwapChainDescriptor, transform_layout: &BindGroupLayout) -> Box<dyn Drawable>;
+    fn init_drawable(
+        &self,
+        device: &Device,
+        sc_desc: &SwapChainDescriptor,
+        transform_layout: &BindGroupLayout,
+    ) -> Box<dyn Drawable>;
 }
 
 pub trait Drawable {
