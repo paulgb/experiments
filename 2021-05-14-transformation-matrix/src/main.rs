@@ -15,7 +15,7 @@ use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsage, ShaderStage,
 };
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 mod circle;
 mod layer;
@@ -24,14 +24,26 @@ mod rectangle;
 
 type Mat4 = [f32; 16];
 
-pub fn transformation_matrix(width: u32, height: u32) -> Mat4 {
+pub fn transformation_matrix(width: u32, height: u32, x_offset: f64, y_offset: f64) -> Mat4 {
+    let x_x = 2. / width as f32;
+    let y_y = -2. / height as f32;
+    let x_w = -1. + (x_offset as f32 / width as f32);
+    let y_w = 1. - (y_offset as f32 / height as f32);
+
     #[cfg_attr(rustfmt, rustfmt_skip)]
     [
-        2. / width as f32,                  0., 0., 0.,
-                       0., -2. / height as f32, 0., 0.,
-                       0.,                  0., 1., 0.,
-                       -1.,                 1., 0., 1.,
+        x_x,  0., 0., 0.,
+         0., y_y, 0., 0.,
+         0.,  0., 1., 0.,
+        x_w, y_w, 0., 1.,
     ]
+}
+
+#[derive(PartialEq)]
+enum DragState {
+    NotDragging,
+    MouseDown,
+    DraggedFrom(PhysicalPosition<f64>),
 }
 
 struct State {
@@ -46,6 +58,8 @@ struct State {
     transform_bind_group: BindGroup,
 
     drawables: Vec<Box<dyn Drawable>>,
+    drag_state: DragState,
+    offset: (f64, f64),
 }
 
 impl State {
@@ -86,7 +100,7 @@ impl State {
         let layers: Vec<Box<dyn Layer>> = vec![
             Box::new(CirclesLayer::new(vec![
                 Circle {
-                    position: [20., 20.,],
+                    position: [20., 20.],
                     radius: 15.,
                     color: [0.1, 1.0, 0.5, 1.],
                 },
@@ -102,7 +116,7 @@ impl State {
                 },
             ])),
             Box::new(CirclesLayer::new(vec![Circle {
-                position: [500., 300.,],
+                position: [500., 300.],
                 radius: 40.,
                 color: [0.3, 0.6, 0.9, 1.],
             }])),
@@ -126,7 +140,7 @@ impl State {
             }])),
         ];
 
-        let transform = transformation_matrix(size.width, size.height);
+        let transform = transformation_matrix(size.width, size.height, 0., 0.);
 
         let transform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Transformation buffer"),
@@ -173,6 +187,8 @@ impl State {
             transform,
             transform_buffer,
             transform_bind_group,
+            drag_state: DragState::NotDragging,
+            offset: (0., 0.),
         }
     }
 
@@ -181,14 +197,46 @@ impl State {
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
 
-        self.transform = transformation_matrix(new_size.width, new_size.height);
+        let (x_offset, y_offset) = self.offset;
+        self.transform = transformation_matrix(new_size.width, new_size.height, x_offset, y_offset);
 
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
 
-    #[allow(unused_variables)]
     fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        match event {
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
+                self.drag_state = match state {
+                    ElementState::Pressed => DragState::MouseDown,
+                    ElementState::Released => DragState::NotDragging,
+                };
+                true
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                if self.drag_state == DragState::NotDragging {
+                    false
+                } else {
+                    if let DragState::DraggedFrom(last_position) = self.drag_state {
+                        let delta = (position.x - last_position.x, position.y - last_position.y);
+
+                        let (x_offset, y_offset) = self.offset;
+                        self.offset = (x_offset + delta.0, y_offset + delta.1);
+
+                        let (x_offset, y_offset) = self.offset;
+                        self.transform = transformation_matrix(self.size.width, self.size.height, x_offset, y_offset);
+                    }
+
+                    self.drag_state = DragState::DraggedFrom(*position);
+
+                    true
+                }
+            }
+            _ => false,
+        }
     }
 
     fn update(&mut self) {}
