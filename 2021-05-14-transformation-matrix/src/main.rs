@@ -20,6 +20,14 @@ mod line;
 mod rectangle;
 
 #[rustfmt::skip]
+const IDENTITY_MATRIX: [f32; 16] = [
+    1., 0., 0., 0.,
+    0., 1., 0., 0.,
+    0., 0., 1., 0.,
+    0., 0., 0., 1.,
+];
+
+#[rustfmt::skip]
 const TRANSFORMATION_MATRIX: [f32; 16] = [
     1., 0., 0., 0.,
     0., 1., 0., 0.,
@@ -122,7 +130,7 @@ impl State {
         let transform = device.create_buffer_init(
             &BufferInitDescriptor {
                 label: Some("Transformation buffer"),
-                contents: bytemuck::cast_slice(&[TRANSFORMATION_MATRIX]),
+                contents: bytemuck::cast_slice(&[IDENTITY_MATRIX]),
                 usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST
             }
         );
@@ -218,6 +226,8 @@ impl State {
                 }],
                 depth_stencil_attachment: None,
             });
+
+            self.queue.write_buffer(&self.transform, 0, &bytemuck::cast_slice(&TRANSFORMATION_MATRIX));
 
             for drawable in &self.drawables {
                 drawable.draw(&mut render_pass, &self.transform_bind_group);
