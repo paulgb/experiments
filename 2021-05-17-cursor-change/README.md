@@ -1,0 +1,1 @@
+An attempt to generalize the drawing behavior into layers, and render multiple layers in the same render pass.
