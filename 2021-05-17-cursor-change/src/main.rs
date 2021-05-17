@@ -25,11 +25,13 @@ mod rectangle;
 
 type Mat4 = [f32; 16];
 
-pub fn transformation_matrix(width: u32, height: u32, x_offset: f64, y_offset: f64) -> Mat4 {
-    let x_x = 2. / width as f32;
-    let y_y = -2. / height as f32;
-    let x_w = -1. + (x_offset as f32 / width as f32);
-    let y_w = 1. - (y_offset as f32 / height as f32);
+const ZOOM_FACTOR: f64 = 1.001;
+
+pub fn transformation_matrix(width: u32, height: u32, x_offset: f64, y_offset: f64, x_scale: f64, y_scale: f64) -> Mat4 {
+    let x_x = x_scale as f32 / width as f32;
+    let y_y = -y_scale as f32 / height as f32;
+    let x_w = -1. + x_scale as f32 * (x_offset as f32 / width as f32);
+    let y_w = 1. - y_scale as f32 * (y_offset as f32 / height as f32);
 
     #[cfg_attr(rustfmt, rustfmt_skip)]
     [
@@ -61,6 +63,7 @@ struct State {
     drawables: Vec<Box<dyn Drawable>>,
     drag_state: DragState,
     offset: (f64, f64),
+    scale: (f64, f64),
 }
 
 impl State {
@@ -141,7 +144,7 @@ impl State {
             }])),
         ];
 
-        let transform = transformation_matrix(size.width, size.height, 0., 0.);
+        let transform = transformation_matrix(size.width, size.height, 0., 0., 2., 2.);
 
         let transform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Transformation buffer"),
@@ -190,6 +193,7 @@ impl State {
             transform_bind_group,
             drag_state: DragState::NotDragging,
             offset: (0., 0.),
+            scale: (2., 2.),
         }
     }
 
@@ -199,7 +203,7 @@ impl State {
         self.sc_desc.height = new_size.height;
 
         let (x_offset, y_offset) = self.offset;
-        self.transform = transformation_matrix(new_size.width, new_size.height, x_offset, y_offset);
+        self.transform = transformation_matrix(new_size.width, new_size.height, x_offset, y_offset, self.scale.0, self.scale.1);
 
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
@@ -223,6 +227,20 @@ impl State {
                 };
                 true
             }
+            WindowEvent::MouseWheel {delta: MouseScrollDelta::PixelDelta(
+                PhysicalPosition {y, ..}
+            ), ..} => {
+
+                let (mut x_scale, mut y_scale) = self.scale;
+                x_scale *= f64::powf(ZOOM_FACTOR, *y);
+                y_scale *= f64::powf(ZOOM_FACTOR, *y);
+
+                self.scale = (x_scale, y_scale);
+                self.transform = transformation_matrix(self.size.width, self.size.height, self.offset.0, self.offset.1, self.scale.0, self.scale.1);
+                window.request_redraw();
+
+                true
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 if self.drag_state == DragState::NotDragging {
                     false
@@ -234,7 +252,7 @@ impl State {
                         self.offset = (x_offset + delta.0, y_offset + delta.1);
 
                         let (x_offset, y_offset) = self.offset;
-                        self.transform = transformation_matrix(self.size.width, self.size.height, x_offset, y_offset);
+                        self.transform = transformation_matrix(self.size.width, self.size.height, x_offset, y_offset, self.scale.0, self.scale.1);
                     }
 
                     self.drag_state = DragState::DraggedFrom(*position);
@@ -250,7 +268,6 @@ impl State {
     fn update(&mut self) {}
 
     fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
-        println!("render");
         let frame = self.swap_chain.get_current_frame()?.output;
 
         let mut encoder = self
