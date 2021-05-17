@@ -42,13 +42,6 @@ pub fn transformation_matrix(width: u32, height: u32, x_offset: f64, y_offset: f
     ]
 }
 
-#[derive(PartialEq)]
-enum DragState {
-    NotDragging,
-    MouseDown,
-    DraggedFrom(PhysicalPosition<f64>),
-}
-
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -61,7 +54,9 @@ struct State {
     transform_bind_group: BindGroup,
 
     drawables: Vec<Box<dyn Drawable>>,
-    drag_state: DragState,
+    dragging: bool,
+    last_position: PhysicalPosition<f64>,
+
     offset: (f64, f64),
     scale: (f64, f64),
 }
@@ -191,7 +186,8 @@ impl State {
             transform,
             transform_buffer,
             transform_bind_group,
-            drag_state: DragState::NotDragging,
+            dragging: false,
+            last_position: PhysicalPosition {x: 0., y: 0.},
             offset: (0., 0.),
             scale: (2., 2.),
         }
@@ -215,14 +211,14 @@ impl State {
                 button: MouseButton::Left,
                 ..
             } => {
-                self.drag_state = match state {
+                self.dragging = match state {
                     ElementState::Pressed => {
                         window.set_cursor_icon(CursorIcon::Grabbing);
-                        DragState::MouseDown
+                        true
                     },
                     ElementState::Released => {
                         window.set_cursor_icon(CursorIcon::Arrow);
-                        DragState::NotDragging
+                        false
                     },
                 };
                 true
@@ -242,24 +238,20 @@ impl State {
                 true
             }
             WindowEvent::CursorMoved { position, .. } => {
-                if self.drag_state == DragState::NotDragging {
-                    false
-                } else {
-                    if let DragState::DraggedFrom(last_position) = self.drag_state {
-                        let delta = (position.x - last_position.x, position.y - last_position.y);
+                if self.dragging {
+                    let delta = (position.x - self.last_position.x, position.y - self.last_position.y);
 
-                        let (x_offset, y_offset) = self.offset;
-                        self.offset = (x_offset + delta.0, y_offset + delta.1);
+                    let (x_offset, y_offset) = self.offset;
+                    self.offset = (x_offset + delta.0, y_offset + delta.1);
 
-                        let (x_offset, y_offset) = self.offset;
-                        self.transform = transformation_matrix(self.size.width, self.size.height, x_offset, y_offset, self.scale.0, self.scale.1);
-                    }
-
-                    self.drag_state = DragState::DraggedFrom(*position);
+                    let (x_offset, y_offset) = self.offset;
+                    self.transform = transformation_matrix(self.size.width, self.size.height, x_offset, y_offset, self.scale.0, self.scale.1);
 
                     window.request_redraw();
-                    true
                 }
+
+                self.last_position = position.clone();
+                true
             }
             _ => false,
         }
