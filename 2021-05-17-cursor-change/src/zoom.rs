@@ -110,12 +110,14 @@ impl ZoomState {
                 let gpu_coord = self.last_position.to_gpu_coordinate(self.size);
                 let scene_coord = gpu_coord.to_scene_coordinate(self.center, self.scale, self.size);
 
-                self.center = SceneCoordinate(scene_coord.0
-                    - ElementWise::mul_element_wise(
-                        ElementWise::div_element_wise(size_to_vec(self.size), new_scale),
-                        gpu_coord.0,
-                    ));
-                
+                self.center = SceneCoordinate(
+                    scene_coord.0
+                        - ElementWise::mul_element_wise(
+                            ElementWise::div_element_wise(size_to_vec(self.size), new_scale),
+                            gpu_coord.0,
+                        ),
+                );
+
                 self.scale = new_scale;
 
                 window.request_redraw();

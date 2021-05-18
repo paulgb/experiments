@@ -70,7 +70,7 @@ impl State {
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: wgpu::PresentMode::Mailbox,
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
@@ -109,18 +109,19 @@ impl State {
                     color: [0.7, 0., 0.4, 1.],
                 },
             ])),
-            Box::new(LinesLayer::new(vec![Line {
-                start: [450., -450.],
-                end: [200., -100.],
-                width: 3.,
-                color: [0.0, 0.0, 0.0, 1.0],
-            },
-                                          Line {
-                                              start: [-450., -450.],
-                                              end: [200., -100.],
-                                              width: 30.,
-                                              color: [0.0, 0.0, 0.0, 1.0],
-                                          }
+            Box::new(LinesLayer::new(vec![
+                Line {
+                    start: [450., -450.],
+                    end: [200., -100.],
+                    width: 3.,
+                    color: [0.0, 0.0, 0.0, 1.0],
+                },
+                Line {
+                    start: [-450., -450.],
+                    end: [200., -100.],
+                    width: 30.,
+                    color: [0.0, 0.0, 0.0, 1.0],
+                },
             ])),
         ];
 
@@ -288,9 +289,7 @@ fn main() {
                     Err(e) => eprintln!("{:?}", e),
                 }
             }
-            _ => {
-                *control_flow = ControlFlow::Wait
-            }
+            _ => *control_flow = ControlFlow::Wait,
         }
     });
 }
