@@ -1,5 +1,5 @@
+use cgmath::ElementWise;
 use cgmath::Vector2;
-use cgmath::{ElementWise};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::window::{CursorIcon, Window};
@@ -11,12 +11,6 @@ const ZOOM_FACTOR: f32 = 1.001;
 fn size_to_vec(size: PhysicalSize<u32>) -> Vector2<f32> {
     Vector2::new(size.width as f32, size.height as f32)
 }
-
-/*
-fn position_to_vec(position: PhysicalPosition<f64>) -> Vector2<f32> {
-    Vector2::new(size.x as f32, size.y as f32)
-}
- */
 
 // Y increases going DOWN.
 #[derive(Debug)]
@@ -32,10 +26,7 @@ struct GPUCoordinate(pub Vector2<f32>);
 
 impl WindowCoordinate {
     pub fn to_gpu_coordinate(&self, size: PhysicalSize<u32>) -> GPUCoordinate {
-        let coordinate = Vector2::new(
-            self.0.x as f32,
-            size.height as f32 - self.0.y as f32
-        );
+        let coordinate = Vector2::new(self.0.x as f32, size.height as f32 - self.0.y as f32);
         GPUCoordinate(
             2. * (ElementWise::div_element_wise(coordinate, size_to_vec(size)))
                 - Vector2::new(1., 1.),
@@ -114,7 +105,18 @@ impl ZoomState {
             } => {
                 let zoom_multiplier = f32::powf(ZOOM_FACTOR, *y as f32);
 
-                self.scale *= zoom_multiplier;
+                let new_scale = self.scale * zoom_multiplier;
+
+                let gpu_coord = self.last_position.to_gpu_coordinate(self.size);
+                let scene_coord = gpu_coord.to_scene_coordinate(self.center, self.scale, self.size);
+
+                self.center = SceneCoordinate(scene_coord.0
+                    - ElementWise::mul_element_wise(
+                        ElementWise::div_element_wise(size_to_vec(self.size), new_scale),
+                        gpu_coord.0,
+                    ));
+                
+                self.scale = new_scale;
 
                 window.request_redraw();
                 true
@@ -134,13 +136,6 @@ impl ZoomState {
                 }
 
                 self.last_position = WindowCoordinate(position.clone());
-
-                let gpu_coord = self.last_position.to_gpu_coordinate(self.size);
-
-                println!("{:?}", &self.last_position);
-                println!("{:?}", &gpu_coord);
-                println!("{:?}", &gpu_coord.to_scene_coordinate(self.center, self.scale, self.size));
-
 
                 true
             }
