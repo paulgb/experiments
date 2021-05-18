@@ -281,7 +281,9 @@ fn main() {
                     Err(e) => eprintln!("{:?}", e),
                 }
             }
-            _ => {}
+            _ => {
+                *control_flow = ControlFlow::Wait
+            }
         }
     });
 }
