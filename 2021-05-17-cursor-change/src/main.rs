@@ -1,46 +1,29 @@
 use std::iter;
 
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsage, ShaderStage,
+};
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use winit::dpi::{ PhysicalSize};
+
+use circle::{Circle, CirclesLayer};
+use layer::{Drawable, Layer};
+use zoom::ZoomState;
 
 use crate::line::{Line, LinesLayer};
 use crate::rectangle::{Rectangle, RectanglesLayer};
-use circle::{Circle, CirclesLayer};
-use layer::{Drawable, Layer};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsage, ShaderStage,
-};
-use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::window::CursorIcon;
 
 mod circle;
 mod layer;
 mod line;
 mod rectangle;
-
-type Mat4 = [f32; 16];
-
-const ZOOM_FACTOR: f64 = 1.001;
-
-pub fn transformation_matrix(width: u32, height: u32, x_offset: f64, y_offset: f64, x_scale: f64, y_scale: f64) -> Mat4 {
-    let x_x = x_scale as f32 / width as f32;
-    let y_y = -y_scale as f32 / height as f32;
-    let x_w = -1. + x_scale as f32 * (x_offset as f32 / width as f32);
-    let y_w = 1. - y_scale as f32 * (y_offset as f32 / height as f32);
-
-    #[cfg_attr(rustfmt, rustfmt_skip)]
-    [
-        x_x,  0., 0., 0.,
-         0., y_y, 0., 0.,
-         0.,  0., 1., 0.,
-        x_w, y_w, 0., 1.,
-    ]
-}
+mod zoom;
 
 struct State {
     surface: wgpu::Surface,
@@ -49,16 +32,11 @@ struct State {
     sc_desc: wgpu::SwapChainDescriptor,
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
-    transform: Mat4,
     transform_buffer: Buffer,
     transform_bind_group: BindGroup,
 
     drawables: Vec<Box<dyn Drawable>>,
-    dragging: bool,
-    last_position: PhysicalPosition<f64>,
-
-    offset: (f64, f64),
-    scale: (f64, f64),
+    zoom_state: ZoomState,
 }
 
 impl State {
@@ -99,7 +77,7 @@ impl State {
         let layers: Vec<Box<dyn Layer>> = vec![
             Box::new(CirclesLayer::new(vec![
                 Circle {
-                    position: [20., 20.],
+                    position: [-220., -220.],
                     radius: 15.,
                     color: [0.1, 1.0, 0.5, 1.],
                 },
@@ -109,20 +87,20 @@ impl State {
                     color: [0.6, 0.6, 0., 1.],
                 },
                 Circle {
-                    position: [350., 350.],
+                    position: [-350., -350.],
                     radius: 70.,
                     color: [0.7, 0., 0.4, 1.],
                 },
             ])),
             Box::new(CirclesLayer::new(vec![Circle {
-                position: [500., 300.],
+                position: [500., -300.],
                 radius: 40.,
                 color: [0.3, 0.6, 0.9, 1.],
             }])),
             Box::new(RectanglesLayer::new(vec![
                 Rectangle {
-                    upper_left: [400., 400.],
-                    bottom_right: [450., 500.],
+                    upper_left: [-400., 400.],
+                    bottom_right: [-450., 500.],
                     color: [0.3, 0.6, 0.4, 1.],
                 },
                 Rectangle {
@@ -132,14 +110,15 @@ impl State {
                 },
             ])),
             Box::new(LinesLayer::new(vec![Line {
-                start: [450., 450.],
-                end: [200., 100.],
+                start: [450., -450.],
+                end: [200., -100.],
                 width: 3.,
                 color: [0.0, 0.0, 0.0, 1.0],
             }])),
         ];
 
-        let transform = transformation_matrix(size.width, size.height, 0., 0., 2., 2.);
+        let zoom_state = ZoomState::new(size);
+        let transform = zoom_state.matrix();
 
         let transform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Transformation buffer"),
@@ -183,13 +162,9 @@ impl State {
             sc_desc,
             swap_chain,
             drawables,
-            transform,
             transform_buffer,
             transform_bind_group,
-            dragging: false,
-            last_position: PhysicalPosition {x: 0., y: 0.},
-            offset: (0., 0.),
-            scale: (2., 2.),
+            zoom_state,
         }
     }
 
@@ -197,67 +172,14 @@ impl State {
         self.size = new_size;
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
-
-        let (x_offset, y_offset) = self.offset;
-        self.transform = transformation_matrix(new_size.width, new_size.height, x_offset, y_offset, self.scale.0, self.scale.1);
+        self.zoom_state.set_size(new_size);
 
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
     }
 
     fn input(&mut self, event: &WindowEvent, window: &Window) -> bool {
-        match event {
-            WindowEvent::MouseInput {
-                state,
-                button: MouseButton::Left,
-                ..
-            } => {
-                self.dragging = match state {
-                    ElementState::Pressed => {
-                        window.set_cursor_icon(CursorIcon::Grabbing);
-                        true
-                    },
-                    ElementState::Released => {
-                        window.set_cursor_icon(CursorIcon::Arrow);
-                        false
-                    },
-                };
-                true
-            }
-            WindowEvent::MouseWheel {delta: MouseScrollDelta::PixelDelta(
-                PhysicalPosition {y, ..}
-            ), ..} => {
-
-                let (mut x_scale, mut y_scale) = self.scale;
-                x_scale *= f64::powf(ZOOM_FACTOR, *y);
-                y_scale *= f64::powf(ZOOM_FACTOR, *y);
-
-                self.scale = (x_scale, y_scale);
-                self.transform = transformation_matrix(self.size.width, self.size.height, self.offset.0, self.offset.1, self.scale.0, self.scale.1);
-                window.request_redraw();
-
-                true
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                if self.dragging {
-                    let delta = (position.x - self.last_position.x, position.y - self.last_position.y);
-
-                    let (x_offset, y_offset) = self.offset;
-                    self.offset = (x_offset + delta.0, y_offset + delta.1);
-
-                    let (x_offset, y_offset) = self.offset;
-                    self.transform = transformation_matrix(self.size.width, self.size.height, x_offset, y_offset, self.scale.0, self.scale.1);
-
-                    window.request_redraw();
-                }
-
-                self.last_position = position.clone();
-                true
-            }
-            _ => false,
-        }
+        self.zoom_state.handle_event(event, window)
     }
-
-    fn update(&mut self) {}
 
     fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
         let frame = self.swap_chain.get_current_frame()?.output;
@@ -287,10 +209,11 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
+            let transform = self.zoom_state.matrix();
             self.queue.write_buffer(
                 &self.transform_buffer,
                 0,
-                &bytemuck::cast_slice(&self.transform),
+                &bytemuck::cast_slice(&transform),
             );
 
             for drawable in &self.drawables {
@@ -318,7 +241,6 @@ fn main() {
 
     use futures::executor::block_on;
 
-    // Since main can't be async, we're going to need to block
     let mut state = block_on(State::new(&window));
 
     event_loop.run(move |event, _, control_flow| {
@@ -341,17 +263,17 @@ fn main() {
                         } => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(physical_size) => {
                             state.resize(*physical_size);
+                            window.request_redraw();
                         }
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                            // new_inner_size is &mut so w have to dereference it twice
                             state.resize(**new_inner_size);
+                            window.request_redraw();
                         }
                         _ => {}
                     }
                 }
             }
             Event::RedrawRequested(_) => {
-                state.update();
                 match state.render() {
                     Ok(_) => {}
                     // Recreate the swap_chain if lost
@@ -361,11 +283,6 @@ fn main() {
                     // All other errors (Outdated, Timeout) should be resolved by the next frame
                     Err(e) => eprintln!("{:?}", e),
                 }
-            }
-            Event::MainEventsCleared => {
-                // RedrawRequested will only trigger once, unless we manually
-                // request it.
-                //window.request_redraw();
             }
             _ => {}
         }
