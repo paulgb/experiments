@@ -1,16 +1,16 @@
 use std::iter;
 
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsage, ShaderStage,
 };
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use winit::dpi::PhysicalSize;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-use winit::dpi::{ PhysicalSize};
 
 use circle::{Circle, CirclesLayer};
 use layer::{Drawable, Layer};
@@ -210,11 +210,8 @@ impl State {
             });
 
             let transform = self.zoom_state.matrix();
-            self.queue.write_buffer(
-                &self.transform_buffer,
-                0,
-                &bytemuck::cast_slice(&transform),
-            );
+            self.queue
+                .write_buffer(&self.transform_buffer, 0, &bytemuck::cast_slice(&transform));
 
             for drawable in &self.drawables {
                 drawable.draw(&mut render_pass, &self.transform_bind_group);
