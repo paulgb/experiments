@@ -1,5 +1,5 @@
 use cgmath::Vector2;
-use cgmath::{ElementWise, Point2};
+use cgmath::{ElementWise};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::window::{CursorIcon, Window};
@@ -12,26 +12,40 @@ fn size_to_vec(size: PhysicalSize<u32>) -> Vector2<f32> {
     Vector2::new(size.width as f32, size.height as f32)
 }
 
-fn position_to_vec(size: PhysicalPosition<u32>) -> Vector2<f32> {
+/*
+fn position_to_vec(position: PhysicalPosition<f64>) -> Vector2<f32> {
     Vector2::new(size.x as f32, size.y as f32)
 }
+ */
 
+// Y increases going DOWN.
 #[derive(Debug)]
-struct WindowCoordinate(PhysicalPosition<u32>);
+struct WindowCoordinate(pub PhysicalPosition<f64>);
 
+// Y increases going UP.
 #[derive(Debug, Clone, Copy)]
 struct SceneCoordinate(pub Vector2<f32>);
 
+// Y increases going UP.
 #[derive(Debug)]
 struct GPUCoordinate(pub Vector2<f32>);
 
 impl WindowCoordinate {
     pub fn to_gpu_coordinate(&self, size: PhysicalSize<u32>) -> GPUCoordinate {
-        let coordinate = position_to_vec(self.0);
+        let coordinate = Vector2::new(
+            self.0.x as f32,
+            size.height as f32 - self.0.y as f32
+        );
         GPUCoordinate(
             2. * (ElementWise::div_element_wise(coordinate, size_to_vec(size)))
                 - Vector2::new(1., 1.),
         )
+    }
+}
+
+impl Default for WindowCoordinate {
+    fn default() -> Self {
+        WindowCoordinate(PhysicalPosition::new(0., 0.))
     }
 }
 
@@ -56,7 +70,7 @@ pub struct ZoomState {
     center: SceneCoordinate,
     scale: Vector2<f32>,
     size: PhysicalSize<u32>,
-    last_position: PhysicalPosition<f64>,
+    last_position: WindowCoordinate,
     dragging: bool,
 }
 
@@ -66,7 +80,7 @@ impl ZoomState {
             center: SceneCoordinate(Vector2::new(0., 0.)),
             scale: Vector2::new(1., 1.),
             size,
-            last_position: PhysicalPosition { x: 0., y: 0. },
+            last_position: WindowCoordinate::default(),
             dragging: false,
         }
     }
@@ -108,8 +122,8 @@ impl ZoomState {
             WindowEvent::CursorMoved { position, .. } => {
                 if self.dragging {
                     let delta = Vector2::new(
-                        self.last_position.x as f32 - position.x as f32,
-                        position.y as f32 - self.last_position.y as f32,
+                        self.last_position.0.x as f32 - position.x as f32,
+                        -(self.last_position.0.y as f32 - position.y as f32),
                     );
 
                     self.center = SceneCoordinate(
@@ -119,7 +133,15 @@ impl ZoomState {
                     window.request_redraw();
                 }
 
-                self.last_position = position.clone();
+                self.last_position = WindowCoordinate(position.clone());
+
+                let gpu_coord = self.last_position.to_gpu_coordinate(self.size);
+
+                println!("{:?}", &self.last_position);
+                println!("{:?}", &gpu_coord);
+                println!("{:?}", &gpu_coord.to_scene_coordinate(self.center, self.scale, self.size));
+
+
                 true
             }
             _ => false,
