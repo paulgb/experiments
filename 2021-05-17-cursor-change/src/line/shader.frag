@@ -8,9 +8,9 @@ layout(location=0) out vec4 f_color;
 void main() {
     float dx = fwidth(v_edge.x);
     float dy = fwidth(v_edge.y);
-    
-    float xcov = clamp(0., 1., v_edge.x / dx);
-    float ycov = clamp(0., 1., v_edge.y / dy);
+
+    float xcov = min(clamp(0., 1., v_edge.x / dx), clamp(0., 1., (1. - v_edge.x) / dx));
+    float ycov = min(clamp(0., 1., v_edge.y / dy), clamp(0., 1., (1. - v_edge.y) / dy));
     float alpha = xcov * ycov;
 
     f_color = vec4(f_color.rgb * alpha, alpha);
