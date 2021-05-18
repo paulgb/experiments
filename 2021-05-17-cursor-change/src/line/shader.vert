@@ -25,7 +25,7 @@ void main() {
     switch (gl_VertexIndex) {
         case 0:
         gl_Position = vec4(c1, 0., 1.);
-        v_edge = vec2(1., 1.);
+        v_edge = vec2(0., 0.);
         break;
         case 1:
         case 3:
@@ -39,7 +39,7 @@ void main() {
         break;
         case 5:
         gl_Position = vec4(c4, 0., 1.);
-        v_edge = vec2(1., 1.);
+        v_edge = vec2(0., 0.);
     }
 
     gl_Position = u_transform * gl_Position;

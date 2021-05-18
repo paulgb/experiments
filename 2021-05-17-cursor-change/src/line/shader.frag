@@ -6,9 +6,12 @@ layout(location=1) in vec2 v_edge;
 layout(location=0) out vec4 f_color;
 
 void main() {
-    if (v_edge.x < fwidth(v_edge.x)) {
-        f_color = vec4(1., 0., 0., 1.);
-    } else {
-        f_color = v_color;
-    }
+    float dx = fwidth(v_edge.x);
+    float dy = fwidth(v_edge.y);
+    
+    float xcov = clamp(0., 1., v_edge.x / dx);
+    float ycov = clamp(0., 1., v_edge.y / dy);
+    float alpha = xcov * ycov;
+
+    f_color = vec4(f_color.rgb * alpha, alpha);
 }

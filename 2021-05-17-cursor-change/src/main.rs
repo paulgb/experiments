@@ -114,7 +114,14 @@ impl State {
                 end: [200., -100.],
                 width: 3.,
                 color: [0.0, 0.0, 0.0, 1.0],
-            }])),
+            },
+                                          Line {
+                                              start: [-450., -450.],
+                                              end: [200., -100.],
+                                              width: 30.,
+                                              color: [0.0, 0.0, 0.0, 1.0],
+                                          }
+            ])),
         ];
 
         let zoom_state = ZoomState::new(size);
