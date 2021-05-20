@@ -6,6 +6,7 @@ layout(location=2) in float a_radius;
 
 layout(location=0) out vec4 v_color;
 layout(location=1) out vec2 v_coord;
+layout(location=2) out vec2 v_c;
 
 void main() {
     switch (gl_VertexIndex) {
@@ -29,4 +30,5 @@ void main() {
     }
 
     v_color = a_color;
+    v_c = a_position.xy;
 }

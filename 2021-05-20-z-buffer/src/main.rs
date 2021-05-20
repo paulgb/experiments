@@ -1,7 +1,12 @@
 use std::iter;
 
 use wgpu::util::DeviceExt;
-use wgpu::{BlendComponent, BlendState, DepthStencilState, CompareFunction, TextureFormat, RenderPassDepthStencilAttachment, SwapChainDescriptor, Extent3d, TextureDescriptor, TextureUsage, Device, TextureViewDescriptor, TextureView, Sampler, SamplerDescriptor, AddressMode, FilterMode, Texture, StencilState, DepthBiasState, Operations, LoadOp};
+use wgpu::{
+    BlendComponent, BlendState, CompareFunction, DepthBiasState, DepthStencilState, Device,
+    Extent3d, LoadOp, Operations, RenderPassDepthStencilAttachment, StencilState,
+    SwapChainDescriptor, TextureDescriptor, TextureFormat, TextureUsage, TextureView,
+    TextureViewDescriptor,
+};
 use winit::dpi::PhysicalSize;
 use winit::{
     event::*,
@@ -19,7 +24,7 @@ struct Circle {
 
 const CIRCLES: &[Circle] = &[
     Circle {
-        position: [0., 0.],
+        position: [0.3, 0.12],
         radius: 0.4,
         color: [0.6, 0.6, 0., 1.], // Yellow
     },
@@ -30,51 +35,28 @@ const CIRCLES: &[Circle] = &[
     },
 ];
 
-struct DepthTextureState {
-    texture: Texture,
-    view: TextureView,
-    sampler: Sampler,
-}
+fn create_depth_texture_view(device: &Device, sc_desc: &SwapChainDescriptor) -> TextureView {
+    let size = Extent3d {
+        width: sc_desc.width,
+        height: sc_desc.height,
+        depth_or_array_layers: 1,
+    };
 
-impl DepthTextureState {
-    fn create_depth_texture(device: &Device, sc_desc: &SwapChainDescriptor) -> Self {
-        let size = Extent3d {
-            width: sc_desc.width,
-            height: sc_desc.height,
-            depth_or_array_layers: 1,
-        };
+    let desc = TextureDescriptor {
+        label: Some("Depth Texture"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: TextureFormat::Depth32Float,
+        usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::SAMPLED,
+    };
 
-        let desc = TextureDescriptor {
-            label: Some("Depth Texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::Depth32Float,
-            usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::SAMPLED,
-        };
+    let texture = device.create_texture(&desc);
 
-        let texture = device.create_texture(&desc);
+    let view = texture.create_view(&TextureViewDescriptor::default());
 
-        let view = texture.create_view(&TextureViewDescriptor::default());
-
-        let sampler = device.create_sampler(
-            &SamplerDescriptor {
-                address_mode_u: AddressMode::ClampToEdge,
-                address_mode_v: AddressMode::ClampToEdge,
-                address_mode_w: AddressMode::ClampToEdge,
-                mag_filter: FilterMode::Linear,
-                min_filter: FilterMode::Linear,
-                mipmap_filter: FilterMode::Nearest,
-                compare: Some(CompareFunction::LessEqual),
-                lod_min_clamp: -100.0,
-                lod_max_clamp: 100.0,
-                ..Default::default()
-            }
-        );
-
-        Self {sampler, texture, view}
-    }
+    view
 }
 
 struct State {
@@ -85,7 +67,7 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    depth_texture_state: DepthTextureState,
+    depth_texture_view: TextureView,
     instance_buffer: wgpu::Buffer,
 }
 
@@ -130,7 +112,7 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let depth_texture_state = DepthTextureState::create_depth_texture(&device, &sc_desc);
+        let depth_texture_view = create_depth_texture_view(&device, &sc_desc);
 
         let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
         let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
@@ -216,7 +198,7 @@ impl State {
             swap_chain,
             render_pipeline,
             instance_buffer,
-            depth_texture_state,
+            depth_texture_view,
         }
     }
 
@@ -226,7 +208,7 @@ impl State {
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
 
-        self.depth_texture_state = DepthTextureState::create_depth_texture(&self.device, &self.sc_desc);
+        self.depth_texture_view = create_depth_texture_view(&self.device, &self.sc_desc);
     }
 
     #[allow(unused_variables)]
@@ -260,12 +242,12 @@ impl State {
                     },
                 }],
                 depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture_state.view,
+                    view: &self.depth_texture_view,
                     depth_ops: Some(Operations {
                         load: LoadOp::Clear(1.0),
                         store: true,
                     }),
-                    stencil_ops: None
+                    stencil_ops: None,
                 }),
             });
 
@@ -318,14 +300,12 @@ fn main() {
                 }
             }
         }
-        Event::RedrawRequested(_) => {
-            match state.render() {
-                Ok(_) => {}
-                Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
-                Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                Err(e) => eprintln!("{:?}", e),
-            }
-        }
+        Event::RedrawRequested(_) => match state.render() {
+            Ok(_) => {}
+            Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
+            Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+            Err(e) => eprintln!("{:?}", e),
+        },
         Event::MainEventsCleared => {
             window.request_redraw();
         }
