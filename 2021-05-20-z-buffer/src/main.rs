@@ -1,28 +1,80 @@
 use std::iter;
 
-use std::time::{Instant};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{BlendComponent, BlendState, BufferUsage};
+use wgpu::util::DeviceExt;
+use wgpu::{BlendComponent, BlendState, DepthStencilState, CompareFunction, TextureFormat, RenderPassDepthStencilAttachment, SwapChainDescriptor, Extent3d, TextureDescriptor, TextureUsage, Device, TextureViewDescriptor, TextureView, Sampler, SamplerDescriptor, AddressMode, FilterMode, Texture, StencilState, DepthBiasState, Operations, LoadOp};
 use winit::dpi::PhysicalSize;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-use rand::{thread_rng, Rng, seq::SliceRandom};
-
-const NUM_LINES: u32 = 30000;
-
-const OPTIONS: [f32; 11] = [6., 8., 10., 12., 15., 20., 24., 30., 40., 60., 120.];
-const OFFSET: f32 = std::f32::consts::PI / 3.;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
-struct Line {
-    start: [f32; 2],
-    end: [f32; 2],
+struct Circle {
+    position: [f32; 2],
     color: [f32; 4],
-    width: f32,
+    radius: f32,
+}
+
+const CIRCLES: &[Circle] = &[
+    Circle {
+        position: [0., 0.],
+        radius: 0.4,
+        color: [0.6, 0.6, 0., 1.], // Yellow
+    },
+    Circle {
+        position: [0.4, 0.4],
+        radius: 0.4,
+        color: [0.7, 0., 0.4, 1.], // Pink
+    },
+];
+
+struct DepthTextureState {
+    texture: Texture,
+    view: TextureView,
+    sampler: Sampler,
+}
+
+impl DepthTextureState {
+    fn create_depth_texture(device: &Device, sc_desc: &SwapChainDescriptor) -> Self {
+        let size = Extent3d {
+            width: sc_desc.width,
+            height: sc_desc.height,
+            depth_or_array_layers: 1,
+        };
+
+        let desc = TextureDescriptor {
+            label: Some("Depth Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::SAMPLED,
+        };
+
+        let texture = device.create_texture(&desc);
+
+        let view = texture.create_view(&TextureViewDescriptor::default());
+
+        let sampler = device.create_sampler(
+            &SamplerDescriptor {
+                address_mode_u: AddressMode::ClampToEdge,
+                address_mode_v: AddressMode::ClampToEdge,
+                address_mode_w: AddressMode::ClampToEdge,
+                mag_filter: FilterMode::Linear,
+                min_filter: FilterMode::Linear,
+                mipmap_filter: FilterMode::Nearest,
+                compare: Some(CompareFunction::LessEqual),
+                lod_min_clamp: -100.0,
+                lod_max_clamp: 100.0,
+                ..Default::default()
+            }
+        );
+
+        Self {sampler, texture, view}
+    }
 }
 
 struct State {
@@ -33,60 +85,11 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-
+    depth_texture_state: DepthTextureState,
     instance_buffer: wgpu::Buffer,
-    created: Instant,
-    generators: Vec<LineGenerator>,
-}
-
-struct LineGenerator {
-    start: [f32; 2],
-    speed: f32,
-    color: [f32; 4],
-    width: f32,
-    length: f32,
-}
-
-impl LineGenerator {
-    pub fn new_rand() -> Self {
-        let mut rng = thread_rng();
-
-        LineGenerator {
-            start: [rng.gen_range(-1.1..1.1), rng.gen_range(-1.1..1.1)],
-            speed: *OPTIONS.choose(&mut rng).unwrap(),
-            color: [
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-                rng.gen_range(0.0..1.0),
-                1.0
-            ],
-            width: rng.gen_range(0.001..0.005),
-            length: rng.gen_range(0.01..0.3),
-        }
-    }
-
-    pub fn gen_line(&self, time: f32) -> Line {
-        let rot = OFFSET + 4. * time / self.speed;
-
-        let end = [
-            self.start[0] + self.length * rot.cos(),
-            self.start[1] + self.length * rot.sin(),
-        ];
-
-        Line {
-            start: self.start,
-            end,
-            color: self.color,
-            width: self.width
-        }
-    }
 }
 
 impl State {
-    fn gen_lines(generators: &[LineGenerator], time: f32) -> Vec<Line> {
-        generators.iter().map(|d| d.gen_line(time)).collect()
-    }
-
     async fn new(window: &Window) -> Self {
         let size = window.inner_size();
 
@@ -112,12 +115,10 @@ impl State {
             .await
             .unwrap();
 
-        let generators: Vec<LineGenerator> = (0..NUM_LINES).map(|_| LineGenerator::new_rand()).collect();
-
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance buffer"),
-            contents: bytemuck::cast_slice(&Self::gen_lines(&generators, 0.)),
-            usage: wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST,
+            contents: bytemuck::cast_slice(CIRCLES),
+            usage: wgpu::BufferUsage::VERTEX,
         });
 
         let sc_desc = wgpu::SwapChainDescriptor {
@@ -129,31 +130,28 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
+        let depth_texture_state = DepthTextureState::create_depth_texture(&device, &sc_desc);
+
         let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
         let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
 
         let instance_buffer_desc = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Line>() as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<Circle>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x2,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 2,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 3,
+                    offset: std::mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
+                    shader_location: 2,
                     format: wgpu::VertexFormat::Float32,
                 },
             ],
@@ -182,7 +180,7 @@ impl State {
                     write_mask: wgpu::ColorWrite::ALL,
                     blend: Some(BlendState {
                         color: BlendComponent::OVER,
-                        alpha: BlendComponent::REPLACE,
+                        alpha: BlendComponent::OVER,
                     }),
                 }],
             }),
@@ -195,15 +193,19 @@ impl State {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: CompareFunction::Less,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
         });
-
-        let created = Instant::now();
 
         Self {
             surface,
@@ -214,8 +216,7 @@ impl State {
             swap_chain,
             render_pipeline,
             instance_buffer,
-            created,
-            generators,
+            depth_texture_state,
         }
     }
 
@@ -224,6 +225,13 @@ impl State {
         self.sc_desc.width = new_size.width;
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
+
+        self.depth_texture_state = DepthTextureState::create_depth_texture(&self.device, &self.sc_desc);
+    }
+
+    #[allow(unused_variables)]
+    fn input(&mut self, event: &WindowEvent) -> bool {
+        false
     }
 
     fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
@@ -235,23 +243,6 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        let time = self.created.elapsed().as_secs_f32();
-
-        let lines = Self::gen_lines(&self.generators, time);
-        let tmp_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Temporary buffer"),
-            contents: &bytemuck::cast_slice(&lines),
-            usage: BufferUsage::COPY_SRC,
-        });
-
-        encoder.copy_buffer_to_buffer(
-            &tmp_buffer,
-            0,
-            &self.instance_buffer,
-            0,
-            std::mem::size_of::<Line>() as u64 * NUM_LINES as u64,
-        );
-
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -260,20 +251,27 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.,
-                            g: 0.,
-                            b: 0.,
+                            r: 1.,
+                            g: 1.,
+                            b: 1.,
                             a: 1.,
                         }),
                         store: true,
                     },
                 }],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture_state.view,
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Clear(1.0),
+                        store: true,
+                    }),
+                    stencil_ops: None
+                }),
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-            render_pass.draw(0..6, 0..NUM_LINES);
+            render_pass.draw(0..6, 0..CIRCLES.len() as u32);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -286,8 +284,7 @@ fn main() {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(800, 800))
-        .with_title("Alignment")
+        .with_inner_size(PhysicalSize::new(1000, 1000))
         .build(&event_loop)
         .unwrap();
 
@@ -299,30 +296,36 @@ fn main() {
         Event::WindowEvent {
             ref event,
             window_id,
-        } if window_id == window.id() => match event {
-            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-            WindowEvent::KeyboardInput { input, .. } => match input {
-                KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::Escape),
-                    ..
-                } => *control_flow = ControlFlow::Exit,
-                _ => {}
-            },
-            WindowEvent::Resized(physical_size) => {
-                state.resize(*physical_size);
+        } if window_id == window.id() => {
+            if !state.input(event) {
+                match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::KeyboardInput { input, .. } => match input {
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        _ => {}
+                    },
+                    WindowEvent::Resized(physical_size) => {
+                        state.resize(*physical_size);
+                    }
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        state.resize(**new_inner_size);
+                    }
+                    _ => {}
+                }
             }
-            WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                state.resize(**new_inner_size);
+        }
+        Event::RedrawRequested(_) => {
+            match state.render() {
+                Ok(_) => {}
+                Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
+                Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                Err(e) => eprintln!("{:?}", e),
             }
-            _ => {}
-        },
-        Event::RedrawRequested(_) => match state.render() {
-            Ok(_) => {}
-            Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
-            Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-            Err(e) => eprintln!("{:?}", e),
-        },
+        }
         Event::MainEventsCleared => {
             window.request_redraw();
         }
