@@ -1,34 +1,52 @@
 #version 450
 
-layout(location=0) in vec2 a_position;
-layout(location=1) in vec4 a_color;
-layout(location=2) in float a_radius;
+layout(location=0) out vec2 v_coord;
+layout(location=1) out vec2 v_c;
 
-layout(location=0) out vec4 v_color;
-layout(location=1) out vec2 v_coord;
-layout(location=2) out vec2 v_c;
+const float RADIUS = 0.05;
+
+layout(set=0, binding=0)
+uniform Uniforms {
+    float u_time;
+};
 
 void main() {
+    float offset = fract(sin(gl_InstanceIndex+1) * 10000.0);
+    float speed = fract(sin(gl_InstanceIndex+1) * 99999.0) - 0.5;
+    float r = fract(sin(gl_InstanceIndex+1) * 99998.0);
+
+    float x = r * cos(speed * u_time + offset);
+    float y = r * sin(speed * u_time + offset);
+
+    /*
+    if (gl_InstanceIndex == 0) {
+        x = -0.8;
+        y = 0.156;
+    } else {
+        x = -0.7269;
+        y = 0.1889;
+    }
+    */
+
     switch (gl_VertexIndex) {
         case 0:
-            gl_Position = vec4(a_position.x - a_radius, a_position.y - a_radius, 0, 1.);
+            gl_Position = vec4(x - RADIUS, y - RADIUS, 0, 1.);
             v_coord = vec2(-1., -1.);
             break;
         case 1:
         case 3:
-            gl_Position = vec4(a_position.x + a_radius, a_position.y - a_radius, 0, 1.);
+            gl_Position = vec4(x + RADIUS, y - RADIUS, 0, 1.);
             v_coord = vec2(1., -1.);
             break;
         case 2:
         case 4:
-            gl_Position = vec4(a_position.x - a_radius, a_position.y + a_radius, 0, 1.);
+            gl_Position = vec4(x - RADIUS, y + RADIUS, 0, 1.);
             v_coord = vec2(-1., 1.);
             break;
         case 5:
-            gl_Position = vec4(a_position.x + a_radius, a_position.y + a_radius, 0, 1.);
+            gl_Position = vec4(x + RADIUS, y + RADIUS, 0, 1.);
             v_coord = vec2(1., 1.);
     }
 
-    v_color = a_color;
-    v_c = a_position.xy;
+    v_c = vec2(x, y);
 }

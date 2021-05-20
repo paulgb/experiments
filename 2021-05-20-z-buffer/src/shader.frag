@@ -1,25 +1,20 @@
 #version 450
 
-layout(location=0) in vec4 v_color;
-layout(location=1) in vec2 v_coord;
-layout(location=2) in vec2 v_c;
+layout(location=0) in vec2 v_coord;
+layout(location=1) in vec2 v_c;
 
 layout(location=0) out vec4 f_color;
 
 const int ITERATIONS = 50;
 
 void main() {
-    /*
     float r = dot(v_coord, v_coord);
     if (r > 1) {
         discard;
     }
-    */
 
-    float cx = v_c.x;
-    float cy = v_c.y;
-    //float cx = 0.285;
-    //float cy = 0.01;
+    float cx = (v_c.x - 0.5) * 1.2;
+    float cy = v_c.y * 1.2;
 
     float zx = v_coord.x;
     float zy = v_coord.y;
@@ -30,10 +25,10 @@ void main() {
         zx = xtemp + cx;
 
         if (zx * zx + zy * zy > 4.) {
-            f_color = vec4(1.0, i / ITERATIONS, 1.0, 1.0);
+            f_color = vec4(i / ITERATIONS, 3 * i / ITERATIONS, 5 * i / ITERATIONS, 1.0);
             return;
         }
     }
 
-    f_color = vec4(0.0, 0.0, 1.0, 1.0);
+    f_color = vec4(0.0, 0.0, 0.0, 1.0);
 }

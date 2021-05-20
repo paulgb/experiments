@@ -1,39 +1,16 @@
 use std::iter;
 
-use wgpu::util::DeviceExt;
-use wgpu::{
-    BlendComponent, BlendState, CompareFunction, DepthBiasState, DepthStencilState, Device,
-    Extent3d, LoadOp, Operations, RenderPassDepthStencilAttachment, StencilState,
-    SwapChainDescriptor, TextureDescriptor, TextureFormat, TextureUsage, TextureView,
-    TextureViewDescriptor,
-};
+use wgpu::util::{DeviceExt, BufferInitDescriptor};
+use wgpu::{BlendComponent, BlendState, CompareFunction, DepthBiasState, DepthStencilState, Device, Extent3d, LoadOp, Operations, RenderPassDepthStencilAttachment, StencilState, SwapChainDescriptor, TextureDescriptor, TextureFormat, TextureUsage, TextureView, TextureViewDescriptor, Buffer, BindGroup, BufferUsage, BindGroupDescriptor, BindGroupLayoutDescriptor, BindGroupEntry, BindGroupLayoutEntry, ShaderStage, BindingType, BufferBindingType};
 use winit::dpi::PhysicalSize;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use std::time::Instant;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Zeroable, bytemuck::Pod)]
-struct Circle {
-    position: [f32; 2],
-    color: [f32; 4],
-    radius: f32,
-}
-
-const CIRCLES: &[Circle] = &[
-    Circle {
-        position: [0.3, 0.12],
-        radius: 0.4,
-        color: [0.6, 0.6, 0., 1.], // Yellow
-    },
-    Circle {
-        position: [0.4, 0.4],
-        radius: 0.4,
-        color: [0.7, 0., 0.4, 1.], // Pink
-    },
-];
+const NUM_CIRCLES: u32 = 10000;
 
 fn create_depth_texture_view(device: &Device, sc_desc: &SwapChainDescriptor) -> TextureView {
     let size = Extent3d {
@@ -68,7 +45,9 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     depth_texture_view: TextureView,
-    instance_buffer: wgpu::Buffer,
+    uniform_buffer: Buffer,
+    uniform_bind_group: BindGroup,
+    created_time: Instant,
 }
 
 impl State {
@@ -97,12 +76,6 @@ impl State {
             .await
             .unwrap();
 
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance buffer"),
-            contents: bytemuck::cast_slice(CIRCLES),
-            usage: wgpu::BufferUsage::VERTEX,
-        });
-
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
@@ -117,32 +90,39 @@ impl State {
         let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
         let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
 
-        let instance_buffer_desc = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Circle>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
+        let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("time"),
+            contents: &bytemuck::cast_slice(&[0.0 as f32]),
+            usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST
+        });
+        
+        let uniform_buffer_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Uniform"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStage::VERTEX,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None
                 },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32,
-                },
-            ],
-        };
-
+                count: None
+            }]
+        });
+        
+        let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: None,
+            layout: &uniform_buffer_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding()
+            }]
+        });
+        
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&uniform_buffer_layout],
                 push_constant_ranges: &[],
             });
 
@@ -152,7 +132,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &vs_module,
                 entry_point: "main",
-                buffers: &[instance_buffer_desc],
+                buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &fs_module,
@@ -197,8 +177,10 @@ impl State {
             sc_desc,
             swap_chain,
             render_pipeline,
-            instance_buffer,
             depth_texture_view,
+            uniform_buffer,
+            uniform_bind_group,
+            created_time: Instant::now(),
         }
     }
 
@@ -211,12 +193,9 @@ impl State {
         self.depth_texture_view = create_depth_texture_view(&self.device, &self.sc_desc);
     }
 
-    #[allow(unused_variables)]
-    fn input(&mut self, event: &WindowEvent) -> bool {
-        false
-    }
-
     fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
+        let d = self.created_time.elapsed().as_secs_f32();
+
         let frame = self.swap_chain.get_current_frame()?.output;
 
         let mut encoder = self
@@ -224,6 +203,8 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+
+        self.queue.write_buffer(&self.uniform_buffer, 0, &bytemuck::cast_slice(&[d as f32]));
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -233,9 +214,9 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 1.,
-                            g: 1.,
-                            b: 1.,
+                            r: 0.01,
+                            g: 0.01,
+                            b: 0.01,
                             a: 1.,
                         }),
                         store: true,
@@ -252,8 +233,8 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-            render_pass.draw(0..6, 0..CIRCLES.len() as u32);
+            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            render_pass.draw(0..6, 0..NUM_CIRCLES);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -278,28 +259,24 @@ fn main() {
         Event::WindowEvent {
             ref event,
             window_id,
-        } if window_id == window.id() => {
-            if !state.input(event) {
-                match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::KeyboardInput { input, .. } => match input {
-                        KeyboardInput {
-                            state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            ..
-                        } => *control_flow = ControlFlow::Exit,
-                        _ => {}
-                    },
-                    WindowEvent::Resized(physical_size) => {
-                        state.resize(*physical_size);
-                    }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        state.resize(**new_inner_size);
-                    }
-                    _ => {}
-                }
+        } if window_id == window.id() => match event {
+            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+            WindowEvent::KeyboardInput { input, .. } => match input {
+                KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                    ..
+                } => *control_flow = ControlFlow::Exit,
+                _ => {}
+            },
+            WindowEvent::Resized(physical_size) => {
+                state.resize(*physical_size);
             }
-        }
+            WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                state.resize(**new_inner_size);
+            }
+            _ => {}
+        },
         Event::RedrawRequested(_) => match state.render() {
             Ok(_) => {}
             Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
