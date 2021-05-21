@@ -5,7 +5,7 @@ layout(location=1) in vec2 v_c;
 
 layout(location=0) out vec4 f_color;
 
-const int ITERATIONS = 20;
+const int ITERATIONS = 50;
 
 void main() {
     /*
@@ -26,12 +26,16 @@ void main() {
         zy = 2 * zx * zy + cy;
         zx = xtemp + cx;
 
-        if (zx * zx + zy * zy > 2.) {
+        if (zx * zx + zy * zy > 4.) {
+            if (i < 1) {
+                discard;
+            }
+
             f_color = vec4(5. * i / ITERATIONS, 1.5 * i / ITERATIONS, 3. * i / ITERATIONS, 1.0);
             return;
         }
     }
 
-    //f_color = vec4(0.0, 0.0, 0.0, 1.0);
-    discard;
+    f_color = vec4(0.0, 0.0, 0.0, 1.0);
+    //discard;
 }
