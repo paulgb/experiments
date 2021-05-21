@@ -1,15 +1,21 @@
 use std::iter;
 
-use wgpu::util::{DeviceExt, BufferInitDescriptor};
-use wgpu::{BlendComponent, BlendState, CompareFunction, DepthBiasState, DepthStencilState, Device, Extent3d, LoadOp, Operations, RenderPassDepthStencilAttachment, StencilState, SwapChainDescriptor, TextureDescriptor, TextureFormat, TextureUsage, TextureView, TextureViewDescriptor, Buffer, BindGroup, BufferUsage, BindGroupDescriptor, BindGroupLayoutDescriptor, BindGroupEntry, BindGroupLayoutEntry, ShaderStage, BindingType, BufferBindingType};
+use clap::Clap;
+use std::time::Instant;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BlendComponent, BlendState, Buffer, BufferBindingType,
+    BufferUsage, CompareFunction, DepthBiasState, DepthStencilState, Device, Extent3d, LoadOp,
+    Operations, RenderPassDepthStencilAttachment, ShaderStage, StencilState, SwapChainDescriptor,
+    TextureDescriptor, TextureFormat, TextureUsage, TextureView, TextureViewDescriptor,
+};
 use winit::dpi::PhysicalSize;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-use clap::Clap;
-use std::time::Instant;
 
 const FPS_RESET_FRAMES: u32 = 10;
 
@@ -18,7 +24,7 @@ struct Opts {
     #[clap(short, long)]
     disable_depth: bool,
 
-    #[clap(short, long, default_value="10000")]
+    #[clap(short, long, default_value = "10000")]
     num_circles: u32,
 }
 
@@ -97,16 +103,15 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-
         let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
         let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("time"),
             contents: &bytemuck::cast_slice(&[0.0 as f32]),
-            usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST
+            usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST,
         });
-        
+
         let uniform_buffer_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Uniform"),
             entries: &[BindGroupLayoutEntry {
@@ -115,21 +120,21 @@ impl State {
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: None
+                    min_binding_size: None,
                 },
-                count: None
-            }]
+                count: None,
+            }],
         });
-        
+
         let uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: None,
             layout: &uniform_buffer_layout,
             entries: &[BindGroupEntry {
                 binding: 0,
-                resource: uniform_buffer.as_entire_binding()
-            }]
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
-        
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -230,7 +235,6 @@ impl State {
             self.last_time = Instant::now();
         }
 
-
         let frame = self.swap_chain.get_current_frame()?.output;
 
         let mut encoder = self
@@ -239,21 +243,26 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        self.queue.write_buffer(&self.uniform_buffer, 0, &bytemuck::cast_slice(&[self.frame as f32]));
+        self.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            &bytemuck::cast_slice(&[self.frame as f32]),
+        );
 
         {
-            let depth_stencil_attachment = if let Some(depth_texture_view) = &self.depth_texture_view {
-                Some(RenderPassDepthStencilAttachment {
-                    view: &depth_texture_view,
-                    depth_ops: Some(Operations {
-                        load: LoadOp::Clear(1.0),
-                        store: true,
-                    }),
-                    stencil_ops: None,
-                })
-            } else {
-                None
-            };
+            let depth_stencil_attachment =
+                if let Some(depth_texture_view) = &self.depth_texture_view {
+                    Some(RenderPassDepthStencilAttachment {
+                        view: &depth_texture_view,
+                        depth_ops: Some(Operations {
+                            load: LoadOp::Clear(1.0),
+                            store: true,
+                        }),
+                        stencil_ops: None,
+                    })
+                } else {
+                    None
+                };
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -291,7 +300,8 @@ fn main() {
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(1000, 1000))
+        .with_title("Z-buffer test")
+        .with_inner_size(PhysicalSize::new(900, 900))
         .build(&event_loop)
         .unwrap();
 
