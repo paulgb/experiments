@@ -8,9 +8,19 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use clap::Clap;
 use std::time::Instant;
 
-const NUM_CIRCLES: u32 = 10000;
+const FPS_RESET_FRAMES: u32 = 10;
+
+#[derive(Clap)]
+struct Opts {
+    #[clap(short, long)]
+    disable_depth: bool,
+
+    #[clap(short, long, default_value="10000")]
+    num_circles: u32,
+}
 
 fn create_depth_texture_view(device: &Device, sc_desc: &SwapChainDescriptor) -> TextureView {
     let size = Extent3d {
@@ -44,14 +54,16 @@ struct State {
     swap_chain: wgpu::SwapChain,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
-    depth_texture_view: TextureView,
+    depth_texture_view: Option<TextureView>,
     uniform_buffer: Buffer,
     uniform_bind_group: BindGroup,
-    created_time: Instant,
+    frame: u32,
+    num_circles: u32,
+    last_time: Instant,
 }
 
 impl State {
-    async fn new(window: &Window) -> Self {
+    async fn new(window: &Window, num_circles: u32, enable_depth: bool) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
@@ -85,7 +97,6 @@ impl State {
         };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
 
-        let depth_texture_view = create_depth_texture_view(&device, &sc_desc);
 
         let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
         let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
@@ -126,6 +137,24 @@ impl State {
                 push_constant_ranges: &[],
             });
 
+        let depth_texture_view = if enable_depth {
+            Some(create_depth_texture_view(&device, &sc_desc))
+        } else {
+            None
+        };
+
+        let depth_stencil = if enable_depth {
+            Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: CompareFunction::Less,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            })
+        } else {
+            None
+        };
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
@@ -155,13 +184,7 @@ impl State {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::Less,
-                stencil: StencilState::default(),
-                bias: DepthBiasState::default(),
-            }),
+            depth_stencil,
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -180,7 +203,9 @@ impl State {
             depth_texture_view,
             uniform_buffer,
             uniform_bind_group,
-            created_time: Instant::now(),
+            frame: 0,
+            num_circles,
+            last_time: Instant::now(),
         }
     }
 
@@ -190,11 +215,21 @@ impl State {
         self.sc_desc.height = new_size.height;
         self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
 
-        self.depth_texture_view = create_depth_texture_view(&self.device, &self.sc_desc);
+        if self.depth_texture_view.is_some() {
+            self.depth_texture_view = Some(create_depth_texture_view(&self.device, &self.sc_desc));
+        }
     }
 
     fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
-        let d = self.created_time.elapsed().as_secs_f32();
+        self.frame += 1;
+
+        if self.frame % FPS_RESET_FRAMES == 0 {
+            let duration = self.last_time.elapsed();
+            let fps = FPS_RESET_FRAMES as f32 / duration.as_secs_f32();
+            println!("FPS of last {} frames: {}", FPS_RESET_FRAMES, fps);
+            self.last_time = Instant::now();
+        }
+
 
         let frame = self.swap_chain.get_current_frame()?.output;
 
@@ -204,9 +239,22 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        self.queue.write_buffer(&self.uniform_buffer, 0, &bytemuck::cast_slice(&[d as f32]));
+        self.queue.write_buffer(&self.uniform_buffer, 0, &bytemuck::cast_slice(&[self.frame as f32]));
 
         {
+            let depth_stencil_attachment = if let Some(depth_texture_view) = &self.depth_texture_view {
+                Some(RenderPassDepthStencilAttachment {
+                    view: &depth_texture_view,
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Clear(1.0),
+                        store: true,
+                    }),
+                    stencil_ops: None,
+                })
+            } else {
+                None
+            };
+
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
@@ -222,19 +270,12 @@ impl State {
                         store: true,
                     },
                 }],
-                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture_view,
-                    depth_ops: Some(Operations {
-                        load: LoadOp::Clear(1.0),
-                        store: true,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment,
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            render_pass.draw(0..6, 0..NUM_CIRCLES);
+            render_pass.draw(0..6, 0..self.num_circles);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -245,6 +286,9 @@ impl State {
 
 fn main() {
     env_logger::init();
+
+    let opts = Opts::parse();
+
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_inner_size(PhysicalSize::new(1000, 1000))
@@ -253,7 +297,7 @@ fn main() {
 
     use futures::executor::block_on;
 
-    let mut state = block_on(State::new(&window));
+    let mut state = block_on(State::new(&window, opts.num_circles, !opts.disable_depth));
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

@@ -12,21 +12,11 @@ uniform Uniforms {
 
 void main() {
     float offset = fract(sin(gl_InstanceIndex+1) * 10000.0);
-    float speed = fract(sin(gl_InstanceIndex+1) * 99999.0) - 0.5;
+    float speed = (fract(sin(gl_InstanceIndex+1) * 99999.0) - 0.5) / 30.;
     float r = fract(sin(gl_InstanceIndex+1) * 99998.0);
 
     float x = r * cos(speed * u_time + offset);
     float y = r * sin(speed * u_time + offset);
-
-    /*
-    if (gl_InstanceIndex == 0) {
-        x = -0.8;
-        y = 0.156;
-    } else {
-        x = -0.7269;
-        y = 0.1889;
-    }
-    */
 
     switch (gl_VertexIndex) {
         case 0:
