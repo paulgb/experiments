@@ -18,13 +18,15 @@ use winit::{
 };
 
 const FPS_RESET_FRAMES: u32 = 10;
+const DEFAULT_RADIUS: f32 = 0.05;
+const SCALE_AMOUNT: f32 = 1.05;
 
 #[derive(Clap)]
 struct Opts {
     #[clap(short, long)]
     disable_depth: bool,
 
-    #[clap(short, long, default_value = "10000")]
+    #[clap(short, long, default_value = "40000")]
     num_circles: u32,
 }
 
@@ -66,6 +68,7 @@ struct State {
     frame: u32,
     num_circles: u32,
     last_time: Instant,
+    radius: f32,
 }
 
 impl State {
@@ -108,7 +111,7 @@ impl State {
 
         let uniform_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("time"),
-            contents: &bytemuck::cast_slice(&[0.0 as f32]),
+            contents: &bytemuck::cast_slice(&[0.0f32, DEFAULT_RADIUS]),
             usage: BufferUsage::UNIFORM | BufferUsage::COPY_DST,
         });
 
@@ -211,6 +214,7 @@ impl State {
             frame: 0,
             num_circles,
             last_time: Instant::now(),
+            radius: DEFAULT_RADIUS,
         }
     }
 
@@ -246,7 +250,7 @@ impl State {
         self.queue.write_buffer(
             &self.uniform_buffer,
             0,
-            &bytemuck::cast_slice(&[self.frame as f32]),
+            &bytemuck::cast_slice(&[self.frame as f32, self.radius]),
         );
 
         {
@@ -321,6 +325,22 @@ fn main() {
                     virtual_keycode: Some(VirtualKeyCode::Escape),
                     ..
                 } => *control_flow = ControlFlow::Exit,
+                KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::A),
+                    ..
+                } => {
+                    state.radius *= SCALE_AMOUNT;
+                    println!("New radius: {}", state.radius);
+                }
+                KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Z),
+                    ..
+                } => {
+                    state.radius *= 1. / SCALE_AMOUNT;
+                    println!("New radius: {}", state.radius);
+                }
                 _ => {}
             },
             WindowEvent::Resized(physical_size) => {
