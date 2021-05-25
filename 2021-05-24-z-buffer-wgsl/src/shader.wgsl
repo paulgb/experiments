@@ -36,6 +36,7 @@ fn vs_main([[builtin(vertex_index)]] in_vertex_index: u32,
     let x: f32 = r * cos(speed * u_time);
     let y: f32 = r * sin(speed * u_time);
 
+    out.c = vec2<f32>(x, y);
     out.coord = corners[in_vertex_index];
     
     out.position = vec4<f32>(x + u_radius * out.coord.x, y + u_radius * out.coord.y, 0., 1.);
