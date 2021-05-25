@@ -11,3 +11,6 @@ bytemuck = "1.5.1"
 env_logger = "0.8.3"
 pollster = "0.2.4"
 wgpu = "0.8.1"
+
+[dev-dependencies]
+clap = { version = "3.0.0-alpha-2", features = ["derive"] }

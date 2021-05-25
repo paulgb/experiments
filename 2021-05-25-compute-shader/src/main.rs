@@ -9,7 +9,7 @@ use wgpu::{
 };
 
 async fn run() {
-    let input: Vec<u32> = vec![1];
+    let input: Vec<f32> = vec![0.0];
 
     let instance = wgpu::Instance::new(BackendBit::PRIMARY);
     let adapter = instance
@@ -36,7 +36,7 @@ async fn run() {
         source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
     });
 
-    let slice_size = input.len() * std::mem::size_of::<u32>();
+    let slice_size = input.len() * std::mem::size_of::<f32>();
     let size = slice_size as BufferAddress;
 
     let staging_buffer = device.create_buffer(&BufferDescriptor {
@@ -76,7 +76,7 @@ async fn run() {
         cpass.set_pipeline(&compute_pipeline);
         cpass.set_bind_group(0, &bind_group, &[]);
         cpass.insert_debug_marker("compute");
-        cpass.dispatch(input.len() as u32, 1, 1);
+        cpass.dispatch(1, 1, 1);
     }
 
     encoder.copy_buffer_to_buffer(&storage_buffer, 0, &staging_buffer, 0, size);
@@ -90,9 +90,9 @@ async fn run() {
 
     let result = if let Ok(()) = buffer_future.await {
         let data = buffer_slice.get_mapped_range();
-        let result: Vec<u32> = data
+        let result: Vec<f32> = data
             .chunks_exact(4)
-            .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+            .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
             .collect();
 
         drop(data);
