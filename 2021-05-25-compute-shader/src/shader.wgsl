@@ -1,21 +1,19 @@
 [[block]]
-struct InputData {
-    data: [[stride(4)]] array<f32>;
+struct IOData {
+    data: f32;
 };
 
 [[group(0), binding(0)]]
-var<storage> v_data: [[access(read_write)]] InputData;
-
-let ITERATIONS: u32 = 1u;
+var<storage> v_data: [[access(read_write)]] IOData;
 
 [[stage(compute), workgroup_size(1)]]
-fn main([[builtin(global_invocation_id)]] global_id: vec3<u32>) {
-    var x: f32 = 0.;
-    var y: f32 = 0.;
+fn main() {
+    var x: f32 = 0.1;
+    var y: f32 = 0.2;
 
-    let xtemp = y;
-    y = 5.;
+    let xtemp: f32 = y;
+    y = 4.1;
     x = xtemp;
 
-    v_data.data[0] = x;
+    v_data.data = x;
 }

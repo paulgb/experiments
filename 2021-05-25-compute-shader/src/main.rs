@@ -30,10 +30,14 @@ async fn run() {
 
     let flags = wgpu::ShaderFlags::VALIDATION | ShaderFlags::EXPERIMENTAL_TRANSLATION;
 
+    let c = include_bytes!("out.spv");
+    let b: &[u32; 142] = unsafe { &core::mem::transmute(*c) };
+
     let cs_module = device.create_shader_module(&ShaderModuleDescriptor {
         flags,
         label: None,
         source: ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+        //source: ShaderSource::SpirV(Cow::Borrowed(b)),
     });
 
     let slice_size = input.len() * std::mem::size_of::<f32>();

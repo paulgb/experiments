@@ -55,7 +55,7 @@ fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
     var zy: f32 = in.coord.y * 2.;
 
     for(var i: i32 = 0; i < ITERATIONS; i = i + 1) {
-        let xtemp: f32 = (zx * zx) - (zy * zy);
+        var xtemp: f32 = (zx * zx) - (zy * zy);
         zy = (2. * zx * zy) + cy;
         zx = xtemp + cx;
 
